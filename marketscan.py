@@ -89,12 +89,9 @@ def patch_exchange_with_proxy(exchange, proxy_pool):
             if proxy is None:
                 raise RuntimeError("No working proxies available in pool")
             # Set proxy for aiohttp session
-            # CCXT async_support uses aiohttp.ClientSession stored in exchange.session
-            # aiohttp proxies require URL like "http://ip:port"
             proxy_url = proxy if proxy.startswith('http') else f"http://{proxy}"
             try:
                 exchange.session._default_proxy = proxy_url
-                # Also set proxies dict for backward compatibility (some versions)
                 exchange.proxies = {
                     "http": proxy_url,
                     "https": proxy_url
@@ -109,8 +106,6 @@ def patch_exchange_with_proxy(exchange, proxy_pool):
         raise RuntimeError(f"All proxies failed for fetching OHLCV {symbol} {timeframe}")
 
     exchange.fetch_ohlcv = fetch_ohlcv_with_proxy
-
-    # You can patch other fetch methods similarly if needed
 
 # --- Telegram bot setup ---
 
@@ -127,6 +122,22 @@ bot = Bot(token=TELEGRAM_BOT_TOKEN)
 CONCURRENT_REQUESTS = 10
 semaphore = asyncio.Semaphore(CONCURRENT_REQUESTS)
 
+# --- Updated function to filter only active markets ---
+
+def filter_active_markets(exchange, market_type):
+    """Filter symbols by market type and active status in CCXT exchange."""
+    active_symbols = []
+    for symbol, market in exchange.markets.items():
+        if market['type'] == market_type and market.get('active', False):
+            active_symbols.append(symbol)
+    return active_symbols
+
+# --- Updated timeframes list including 1d ---
+
+def get_timeframes():
+    """Return list of timeframes including 1M, 1w, and 1d."""
+    return ['1M', '1w', '1d']
+
 # --- Main logic ---
 
 async def fetch_candles(exchange, symbol, timeframe, limit=3):
@@ -140,10 +151,11 @@ async def fetch_candles(exchange, symbol, timeframe, limit=3):
 
 async def check_candles(exchange, symbol):
     results = []
-    monthly = await fetch_candles(exchange, symbol, '1M', limit=3)
-    weekly = await fetch_candles(exchange, symbol, '1w', limit=3)
-
-    for timeframe, candles in [('1M', monthly), ('1w', weekly)]:
+    
+    # Fetch candles for all timeframes including 1d
+    for timeframe in get_timeframes():
+        candles = await fetch_candles(exchange, symbol, timeframe, limit=3)
+        
         if candles and len(candles) >= 3:
             close_0 = candles[0][4]
             open_1 = candles[1][1]
@@ -151,14 +163,8 @@ async def check_candles(exchange, symbol):
             results.append((symbol, exchange.id, timeframe, matched))
         else:
             results.append((symbol, exchange.id, timeframe, None))
+    
     return results
-
-def filter_symbols(exchange, market_type):
-    symbols = []
-    for symbol, market in exchange.markets.items():
-        if market['type'] == market_type:
-            symbols.append(symbol)
-    return symbols
 
 def format_results_message(all_results):
     lines = []
@@ -218,10 +224,13 @@ async def main():
     await binance.load_markets()
     await bybit.load_markets()
 
-    binance_spot = filter_symbols(binance, 'spot')
-    binance_perp = filter_symbols(binance, 'future')
-    bybit_spot = filter_symbols(bybit, 'spot')
-    bybit_perp = filter_symbols(bybit, 'future')
+    # Filter only active markets
+    binance_spot = filter_active_markets(binance, 'spot')
+    binance_perp = filter_active_markets(binance, 'future')
+    bybit_spot = filter_active_markets(bybit, 'spot')
+    bybit_perp = filter_active_markets(bybit, 'future')
+
+    logging.info(f"Active markets found - Binance spot: {len(binance_spot)}, Binance perp: {len(binance_perp)}, Bybit spot: {len(bybit_spot)}, Bybit perp: {len(bybit_perp)}")
 
     combined_symbols = binance_perp + binance_spot + bybit_perp + bybit_spot
     seen = set()
@@ -240,7 +249,7 @@ async def main():
         else:
             logging.warning(f"Symbol {symbol} not found on any exchange")
 
-    logging.info(f"Total unique symbols to scan: {len(unique_symbols)}")
+    logging.info(f"Total unique active symbols to scan: {len(unique_symbols)}")
 
     tasks = [check_candles(symbol_exchange_map[symbol], symbol) for symbol in unique_symbols]
     all_results = await asyncio.gather(*tasks)
@@ -256,3 +265,4 @@ async def main():
 
 if __name__ == '__main__':
     asyncio.run(main())
+p
