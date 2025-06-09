@@ -5,9 +5,9 @@ import threading
 import time
 import logging
 import os
-from os_gatenov import Bot
+from telegram import Bot
 
-# --- ProxyPool class (adapted from your provided code) ---
+# --- ProxyPool class ---
 
 class ProxyPool:
     def __init__(self, max_pool_size: int = 25, proxy_check_interval: int = 600, max_failures: int = 3):
@@ -73,14 +73,9 @@ class ProxyPool:
         with self.lock:
             return bool(self.proxies)
 
-# --- Helper to patch CCXT exchange to use proxy from ProxyPool ---
+# --- Patch CCXT exchange to use rotating proxies from ProxyPool ---
 
 def patch_exchange_with_proxy(exchange, proxy_pool):
-    """
-    Patch exchange.fetch methods to use rotating proxies from proxy_pool.
-    This sets the HTTP proxy on exchange.session.proxies before each request.
-    """
-
     original_fetch_ohlcv = exchange.fetch_ohlcv
 
     async def fetch_ohlcv_with_proxy(symbol, timeframe='1m', since=None, limit=None, params={}):
@@ -88,7 +83,6 @@ def patch_exchange_with_proxy(exchange, proxy_pool):
             proxy = proxy_pool.get_next_proxy()
             if proxy is None:
                 raise RuntimeError("No working proxies available in pool")
-            # Set proxy for aiohttp session
             proxy_url = proxy if proxy.startswith('http') else f"http://{proxy}"
             try:
                 exchange.session._default_proxy = proxy_url
@@ -107,10 +101,10 @@ def patch_exchange_with_proxy(exchange, proxy_pool):
 
     exchange.fetch_ohlcv = fetch_ohlcv_with_proxy
 
-# --- Telegram bot setup ---
+# --- Telegram bot setup using python-telegram-bot v20+ async ---
 
-TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
 
 if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
     raise EnvironmentError("Please set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID environment variables")
@@ -122,23 +116,21 @@ bot = Bot(token=TELEGRAM_BOT_TOKEN)
 CONCURRENT_REQUESTS = 10
 semaphore = asyncio.Semaphore(CONCURRENT_REQUESTS)
 
-# --- Updated function to filter only active markets ---
+# --- Filter active markets only ---
 
 def filter_active_markets(exchange, market_type):
-    """Filter symbols by market type and active status in CCXT exchange."""
     active_symbols = []
     for symbol, market in exchange.markets.items():
         if market['type'] == market_type and market.get('active', False):
             active_symbols.append(symbol)
     return active_symbols
 
-# --- Updated timeframes list including 1d ---
+# --- Timeframes including 1M, 1w, and 1d ---
 
 def get_timeframes():
-    """Return list of timeframes including 1M, 1w, and 1d."""
     return ['1M', '1w', '1d']
 
-# --- Main logic ---
+# --- Fetch candles with concurrency control ---
 
 async def fetch_candles(exchange, symbol, timeframe, limit=3):
     async with semaphore:
@@ -149,13 +141,12 @@ async def fetch_candles(exchange, symbol, timeframe, limit=3):
             logging.warning(f"[{exchange.id}] Error fetching {symbol} {timeframe}: {e}")
             return None
 
+# --- Check candles for close==next open condition ---
+
 async def check_candles(exchange, symbol):
     results = []
-    
-    # Fetch candles for all timeframes including 1d
     for timeframe in get_timeframes():
         candles = await fetch_candles(exchange, symbol, timeframe, limit=3)
-        
         if candles and len(candles) >= 3:
             close_0 = candles[0][4]
             open_1 = candles[1][1]
@@ -163,8 +154,9 @@ async def check_candles(exchange, symbol):
             results.append((symbol, exchange.id, timeframe, matched))
         else:
             results.append((symbol, exchange.id, timeframe, None))
-    
     return results
+
+# --- Format Telegram message ---
 
 def format_results_message(all_results):
     lines = []
@@ -180,8 +172,9 @@ def format_results_message(all_results):
                 status = "✅ MATCH" if matched else "❌ NO MATCH"
             lines.append(f"{exch:<8} | {symbol:<20} | {timeframe:<3} | {status}")
 
-    message = "\n".join(lines)
-    return message
+    return "\n".join(lines)
+
+# --- Send Telegram message asynchronously ---
 
 async def send_telegram_message(text):
     try:
@@ -190,15 +183,15 @@ async def send_telegram_message(text):
     except Exception as e:
         logging.error(f"Failed to send Telegram message: {e}")
 
+# --- Main async entrypoint ---
+
 async def main():
     logging.basicConfig(level=logging.INFO)
 
-    # Initialize ProxyPool with proxies from environment variable or file
     proxy_list_raw = os.getenv("PROXY_LIST")
     if proxy_list_raw:
         proxies = [p.strip() for p in proxy_list_raw.split(",") if p.strip()]
     else:
-        # fallback proxy list file
         proxy_file = os.getenv("PROXY_FILE", "proxies.txt")
         try:
             with open(proxy_file, "r") as f:
@@ -213,18 +206,15 @@ async def main():
     proxy_pool = ProxyPool(max_pool_size=25)
     proxy_pool.populate_from_list(proxies)
 
-    # Initialize exchanges
     binance = ccxt.binance({'enableRateLimit': True})
     bybit = ccxt.bybit({'enableRateLimit': True})
 
-    # Patch exchanges to use proxies from pool
     patch_exchange_with_proxy(binance, proxy_pool)
     patch_exchange_with_proxy(bybit, proxy_pool)
 
     await binance.load_markets()
     await bybit.load_markets()
 
-    # Filter only active markets
     binance_spot = filter_active_markets(binance, 'spot')
     binance_perp = filter_active_markets(binance, 'future')
     bybit_spot = filter_active_markets(bybit, 'spot')
@@ -265,4 +255,3 @@ async def main():
 
 if __name__ == '__main__':
     asyncio.run(main())
-p
