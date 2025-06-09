@@ -12,7 +12,7 @@ from telegram import Bot
 if sys.platform.startswith("win"):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-# --- ProxyPool class ---
+# --- ProxyPool class with strict no-direct-connection enforcement ---
 
 class ProxyPool:
     def __init__(self, max_pool_size: int = 25, proxy_check_interval: int = 600, max_failures: int = 3):
@@ -32,14 +32,14 @@ class ProxyPool:
     def get_next_proxy(self):
         with self.lock:
             if not self.proxies:
-                logging.warning("Proxy pool empty when requesting next proxy.")
-                return None
+                logging.error("Proxy pool empty when requesting next proxy. Exiting to prevent direct connection!")
+                sys.exit(1)
             for _ in range(len(self.proxies)):
                 proxy = next(self.proxy_cycle)
                 if proxy not in self.failed_proxies:
                     return proxy
-            logging.warning("All proxies in pool are marked as failed.")
-            return None
+            logging.error("All proxies in pool are marked as failed. Exiting to prevent direct connection!")
+            sys.exit(1)
 
     def mark_proxy_failure(self, proxy):
         with self.lock:
@@ -52,6 +52,9 @@ class ProxyPool:
                     self.proxies.remove(proxy)
                     logging.warning(f"Proxy {proxy} removed from pool due to repeated failures.")
                 self.proxy_cycle = itertools.cycle(self.proxies) if self.proxies else None
+                if not self.proxies:
+                    logging.error("All proxies removed due to failures. Exiting to prevent direct connection!")
+                    sys.exit(1)
 
     def reset_proxy_failures(self, proxy):
         with self.lock:
@@ -68,7 +71,10 @@ class ProxyPool:
             self.proxies = proxy_list[:self.max_pool_size]
             self.proxy_failures.clear()
             self.failed_proxies.clear()
-            self.proxy_cycle = itertools.cycle(self.proxies) if self.proxies else None
+            if not self.proxies:
+                logging.error("No proxies provided to populate the pool. Exiting to prevent direct connection!")
+                sys.exit(1)
+            self.proxy_cycle = itertools.cycle(self.proxies)
             logging.info(f"Proxy pool filled with {len(self.proxies)} proxies.")
 
     def stop(self):
@@ -86,8 +92,6 @@ def patch_exchange_with_proxy(exchange, proxy_pool):
     async def fetch_ohlcv_with_proxy(symbol, timeframe='1m', since=None, limit=None, params={}):
         for attempt in range(5):
             proxy = proxy_pool.get_next_proxy()
-            if proxy is None:
-                raise RuntimeError("No working proxies available in pool")
             proxy_url = proxy if proxy.startswith('http') else f"http://{proxy}"
             try:
                 exchange.session._default_proxy = proxy_url
@@ -112,7 +116,8 @@ TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
 
 if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-    raise EnvironmentError("Please set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID environment variables")
+    logging.error("Please set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID environment variables")
+    sys.exit(1)
 
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
@@ -203,10 +208,7 @@ async def main():
                 proxies = [line.strip() for line in f if line.strip()]
         except Exception as e:
             logging.error(f"Failed to load proxies from file {proxy_file}: {e}")
-            proxies = []
-
-    if not proxies:
-        logging.warning("No proxies loaded, proceeding without proxies (not recommended).")
+            sys.exit(1)
 
     proxy_pool = ProxyPool(max_pool_size=25)
     proxy_pool.populate_from_list(proxies)
@@ -256,8 +258,8 @@ async def main():
     logging.info(f"Total unique active symbols to scan: {len(unique_symbols)}")
 
     if not symbol_exchange_map:
-        logging.warning("No symbols to scan, exiting.")
-        return
+        logging.error("No symbols to scan (all exchanges unavailable or blocked). Exiting.")
+        sys.exit(1)
 
     tasks = [check_candles(symbol_exchange_map[symbol], symbol) for symbol in unique_symbols]
     all_results = await asyncio.gather(*tasks)
