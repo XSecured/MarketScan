@@ -5,18 +5,13 @@ import logging
 import os
 import threading
 import sys
-import time
 from typing import List
 
 import pandas as pd
 import requests
 from binance import AsyncClient
-from pybit import HTTP
+from pybit.unified_trading import HTTP
 from telegram import Bot
-
-# --- Fix event loop policy on Windows ---
-if sys.platform.startswith("win"):
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 # --- ProxyPool class ---
 
@@ -135,7 +130,8 @@ class BybitClient:
             'http': proxy,
             'https': proxy,
         })
-        return HTTP("https://api.bybit.com", session=session)
+        client = HTTP(testnet=False, session=session)
+        return client
 
     async def initialize(self):
         loop = asyncio.get_event_loop()
@@ -306,7 +302,6 @@ async def main():
     tasks = [check_symbol(sym, exch, mtype) for sym, exch, mtype in unique_symbols]
     all_results = await asyncio.gather(*tasks)
 
-    # Flatten results and format message
     flat_results = [item for sublist in all_results for item in sublist]
     message = format_results_message(flat_results)
 
@@ -317,7 +312,7 @@ async def main():
         logging.error(f"Failed to send Telegram message: {e}")
 
     await binance_client.close()
-    # No explicit close needed for Bybit clients (requests sessions)
+    # No explicit close needed for Bybit clients
 
 if __name__ == '__main__':
     asyncio.run(main())
