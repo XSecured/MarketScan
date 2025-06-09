@@ -78,7 +78,7 @@ class ProxyPool:
         with self.lock:
             return bool(self.proxies)
 
-# --- Binance client wrapper with proxy support ---
+# --- Binance client wrapper with correct proxy usage ---
 
 class BinanceClient:
     def __init__(self, proxy_pool: ProxyPool):
@@ -88,9 +88,9 @@ class BinanceClient:
 
     async def initialize(self):
         for proxy in self.proxy_pool.proxies:
-            proxies = {'http': proxy, 'https': proxy}
+            proxy_url = proxy if proxy.startswith("http") else f"http://{proxy}"
             try:
-                client = await AsyncClient.create(requests_params={'proxies': proxies})
+                client = await AsyncClient.create(session_params={"proxy": proxy_url})
                 self.clients.append((client, proxy))
                 logging.info(f"Binance client created with proxy {proxy}")
             except Exception as e:
