@@ -4,16 +4,21 @@ import itertools
 import logging
 import os
 import threading
+import sys
 import time
 from typing import List
 
 import pandas as pd
-from binance import AsyncClient
-from bybit import Bybit
-from telegram import Bot
 import requests
+from binance import AsyncClient
+from pybit import HTTP
+from telegram import Bot
 
-# --- ProxyPool class (from your EMA bot) ---
+# --- Fix event loop policy on Windows ---
+if sys.platform.startswith("win"):
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+# --- ProxyPool class ---
 
 class ProxyPool:
     def __init__(self, max_pool_size: int = 25, max_failures: int = 3):
@@ -22,7 +27,7 @@ class ProxyPool:
         self.max_failures = max_failures
 
         self.proxies: List[str] = []
-        self.proxy_failures = {}  # proxy -> failure count
+        self.proxy_failures = {}
         self.failed_proxies = set()
         self.proxy_cycle = None
 
@@ -30,13 +35,13 @@ class ProxyPool:
         with self.lock:
             if not self.proxies:
                 logging.error("Proxy pool empty when requesting next proxy. Exiting!")
-                raise RuntimeError("No proxies available")
+                sys.exit(1)
             for _ in range(len(self.proxies)):
                 proxy = next(self.proxy_cycle)
                 if proxy not in self.failed_proxies:
                     return proxy
             logging.error("All proxies marked as failed. Exiting!")
-            raise RuntimeError("All proxies failed")
+            sys.exit(1)
 
     def mark_proxy_failure(self, proxy):
         with self.lock:
@@ -51,7 +56,7 @@ class ProxyPool:
                 self.proxy_cycle = itertools.cycle(self.proxies) if self.proxies else None
                 if not self.proxies:
                     logging.error("All proxies removed due to failures. Exiting!")
-                    raise RuntimeError("All proxies failed")
+                    sys.exit(1)
 
     def reset_proxy_failures(self, proxy):
         with self.lock:
@@ -68,7 +73,7 @@ class ProxyPool:
             self.proxies = proxy_list[:self.max_pool_size]
             if not self.proxies:
                 logging.error("No proxies provided to populate pool. Exiting!")
-                raise RuntimeError("No proxies provided")
+                sys.exit(1)
             self.proxy_failures.clear()
             self.failed_proxies.clear()
             self.proxy_cycle = itertools.cycle(self.proxies)
@@ -78,7 +83,7 @@ class ProxyPool:
         with self.lock:
             return bool(self.proxies)
 
-# --- Binance async client wrapper with proxy support ---
+# --- Binance client wrapper with proxy support ---
 
 class BinanceClient:
     def __init__(self, proxy_pool: ProxyPool):
@@ -87,7 +92,6 @@ class BinanceClient:
         self.lock = asyncio.Lock()
 
     async def initialize(self):
-        # Create one AsyncClient per proxy with proxy set in requests_params
         for proxy in self.proxy_pool.proxies:
             proxies = {'http': proxy, 'https': proxy}
             try:
@@ -98,7 +102,8 @@ class BinanceClient:
                 logging.warning(f"Failed to create Binance client with proxy {proxy}: {e}")
                 self.proxy_pool.mark_proxy_failure(proxy)
         if not self.clients:
-            raise RuntimeError("No Binance clients could be initialized")
+            logging.error("No Binance clients could be initialized. Exiting!")
+            sys.exit(1)
 
     async def close(self):
         for client, _ in self.clients:
@@ -121,7 +126,7 @@ class BinanceClient:
 class BybitClient:
     def __init__(self, proxy_pool: ProxyPool):
         self.proxy_pool = proxy_pool
-        self.sessions = []  # List of (Bybit client, proxy)
+        self.clients = []  # List of (pybit HTTP client, proxy)
         self.lock = asyncio.Lock()
 
     def create_client_with_proxy(self, proxy):
@@ -130,28 +135,26 @@ class BybitClient:
             'http': proxy,
             'https': proxy,
         })
-        return Bybit(session=session)
+        return HTTP("https://api.bybit.com", session=session)
 
     async def initialize(self):
-        # Bybit SDK is synchronous, so we run in thread pool
         loop = asyncio.get_event_loop()
         for proxy in self.proxy_pool.proxies:
             try:
                 client = await loop.run_in_executor(None, self.create_client_with_proxy, proxy)
-                self.sessions.append((client, proxy))
+                self.clients.append((client, proxy))
                 logging.info(f"Bybit client created with proxy {proxy}")
             except Exception as e:
                 logging.warning(f"Failed to create Bybit client with proxy {proxy}: {e}")
                 self.proxy_pool.mark_proxy_failure(proxy)
-        if not self.sessions:
-            raise RuntimeError("No Bybit clients could be initialized")
+        if not self.clients:
+            logging.error("No Bybit clients could be initialized. Exiting!")
+            sys.exit(1)
 
     async def fetch_ohlcv(self, symbol, interval, limit=3):
-        # Bybit official client does not have async OHLCV, so use requests with proxies
-        # We'll run requests in thread pool to avoid blocking
         loop = asyncio.get_event_loop()
         async with self.lock:
-            for client, proxy in self.sessions:
+            for client, proxy in self.clients:
                 try:
                     def fetch():
                         params = {
@@ -174,35 +177,9 @@ class BybitClient:
                     self.proxy_pool.mark_proxy_failure(proxy)
             raise RuntimeError("All Bybit proxies failed")
 
-# --- Helper functions ---
-
-def filter_active_markets_binance(client, markets, market_type):
-    return [symbol for symbol, m in markets.items() if m['status'] == 'TRADING' and m['quoteAsset'] == 'USDT' and m['contractType' if market_type == 'future' else 'spot'] == market_type]
-
-def filter_active_markets_bybit(markets, market_type):
-    # markets is list of dicts from Bybit API; filter USDT perpetual or spot
-    filtered = []
-    for m in markets:
-        if m.get('status') == 'Trading' and m.get('quote_currency') == 'USDT':
-            if market_type == 'future' and m.get('category') == 'linear':
-                filtered.append(m['symbol'])
-            elif market_type == 'spot' and m.get('category') == 'spot':
-                filtered.append(m['symbol'])
-    return filtered
-
-# --- Timeframes ---
-
-TIMEFRAMES = {
-    '1M': '1M',
-    '1w': '1w',
-    '1d': '1d',
-}
-
-# --- Candle check ---
+# --- Candle check helper ---
 
 def close_equals_next_open(candles):
-    # candles: list of lists for Binance, or list of dicts for Bybit
-    # We check candles[0].close == candles[1].open
     try:
         if len(candles) < 2:
             return None
@@ -236,41 +213,33 @@ def format_results_message(results):
 async def main():
     logging.basicConfig(level=logging.INFO)
 
-    # Load proxies
     proxy_list_raw = os.getenv("PROXY_LIST")
     if not proxy_list_raw:
         logging.error("PROXY_LIST environment variable not set")
-        return
+        sys.exit(1)
     proxies = [p.strip() for p in proxy_list_raw.split(",") if p.strip()]
 
     proxy_pool = ProxyPool(max_pool_size=25)
     proxy_pool.populate_from_list(proxies)
 
-    if not proxy_pool.has_proxies():
-        logging.error("No proxies available, exiting")
-        return
-
-    # Telegram setup
     TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
     TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         logging.error("Telegram token or chat ID not set")
-        return
+        sys.exit(1)
     bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
-    # Initialize clients
     binance_client = BinanceClient(proxy_pool)
     await binance_client.initialize()
 
     bybit_client = BybitClient(proxy_pool)
     await bybit_client.initialize()
 
-    # Load Binance markets
+    # Load Binance markets from first client
     binance_markets = {}
     try:
-        # Use first binance client for markets
-        binance_markets_raw = await binance_client.clients[0][0].get_exchange_info()
-        binance_markets = {m['symbol']: m for m in binance_markets_raw['symbols']}
+        binance_info = await binance_client.clients[0][0].get_exchange_info()
+        binance_markets = {m['symbol']: m for m in binance_info['symbols']}
     except Exception as e:
         logging.error(f"Failed to load Binance markets: {e}")
 
@@ -278,12 +247,12 @@ async def main():
     bybit_spot_markets = []
     bybit_futures_markets = []
     try:
-        resp_spot = bybit_client.sessions[0][0].session.get("https://api.bybit.com/v2/public/symbols")
+        resp_spot = bybit_client.clients[0][0].session.get("https://api.bybit.com/v2/public/symbols")
         spot_data = resp_spot.json()
         if spot_data.get("ret_code") == 0:
             bybit_spot_markets = spot_data.get("result", [])
 
-        resp_fut = bybit_client.sessions[0][0].session.get("https://api.bybit.com/public/linear/symbols")
+        resp_fut = bybit_client.clients[0][0].session.get("https://api.bybit.com/public/linear/symbols")
         fut_data = resp_fut.json()
         if fut_data.get("ret_code") == 0:
             bybit_futures_markets = fut_data.get("result", [])
@@ -291,8 +260,8 @@ async def main():
         logging.error(f"Failed to load Bybit markets: {e}")
 
     # Filter symbols
-    binance_spot = [s for s, m in binance_markets.items() if m['status'] == 'TRADING' and m['quoteAsset'] == 'USDT' and m['contractType'] == 'SPOT']
-    binance_perp = [s for s, m in binance_markets.items() if m['status'] == 'TRADING' and m['quoteAsset'] == 'USDT' and m['contractType'] == 'PERPETUAL']
+    binance_spot = [s for s, m in binance_markets.items() if m['status'] == 'TRADING' and m['quoteAsset'] == 'USDT' and m.get('contractType', '') == 'SPOT']
+    binance_perp = [s for s, m in binance_markets.items() if m['status'] == 'TRADING' and m['quoteAsset'] == 'USDT' and m.get('contractType', '') == 'PERPETUAL']
 
     bybit_spot = [m['name'] for m in bybit_spot_markets if m['quote_currency'] == 'USDT' and m['status'] == 'Trading']
     bybit_perp = [m['name'] for m in bybit_futures_markets if m['quote_currency'] == 'USDT' and m['status'] == 'Trading']
@@ -314,7 +283,6 @@ async def main():
             seen.add(sym)
             unique_symbols.append((sym, exch, mtype))
 
-    # Semaphore for concurrency
     semaphore = asyncio.Semaphore(10)
 
     async def check_symbol(symbol, exchange_name, market_type):
@@ -324,13 +292,10 @@ async def main():
                 try:
                     if exchange_name == 'binance':
                         interval = timeframe.lower()
-                        client = binance_client
-                        klines = await client.fetch_ohlcv(symbol, interval, limit=3)
-                    else:  # bybit
-                        # Map timeframe to Bybit interval format if needed
+                        klines = await binance_client.fetch_ohlcv(symbol, interval, limit=3)
+                    else:
                         interval = timeframe.lower()
-                        client = bybit_client
-                        klines = await client.fetch_ohlcv(symbol, interval, limit=3)
+                        klines = await bybit_client.fetch_ohlcv(symbol, interval, limit=3)
                     matched = close_equals_next_open(klines) if klines else None
                     results.append((symbol, exchange_name, timeframe, matched))
                 except Exception as e:
@@ -338,22 +303,21 @@ async def main():
                     results.append((symbol, exchange_name, timeframe, None))
             return results
 
-    # Run all checks concurrently
     tasks = [check_symbol(sym, exch, mtype) for sym, exch, mtype in unique_symbols]
     all_results = await asyncio.gather(*tasks)
 
-    message = format_results_message([item for sublist in all_results for item in sublist])
+    # Flatten results and format message
+    flat_results = [item for sublist in all_results for item in sublist]
+    message = format_results_message(flat_results)
 
-    # Send Telegram message
     try:
         await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message, parse_mode='Markdown')
         logging.info("Telegram message sent successfully.")
     except Exception as e:
         logging.error(f"Failed to send Telegram message: {e}")
 
-    # Close clients
     await binance_client.close()
-    # Bybit client uses requests sessions, no async close needed
+    # No explicit close needed for Bybit clients (requests sessions)
 
 if __name__ == '__main__':
     asyncio.run(main())
