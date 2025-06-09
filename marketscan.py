@@ -1,3 +1,4 @@
+import sys
 import asyncio
 import ccxt.async_support as ccxt
 import itertools
@@ -6,6 +7,10 @@ import time
 import logging
 import os
 from telegram import Bot
+
+# --- Fix event loop policy on Windows ---
+if sys.platform.startswith("win"):
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 # --- ProxyPool class ---
 
@@ -212,13 +217,22 @@ async def main():
     patch_exchange_with_proxy(binance, proxy_pool)
     patch_exchange_with_proxy(bybit, proxy_pool)
 
-    await binance.load_markets()
-    await bybit.load_markets()
+    try:
+        await binance.load_markets()
+    except ccxt.ExchangeNotAvailable as e:
+        logging.error(f"Binance unavailable (blocked or restricted): {e}")
+        binance = None
 
-    binance_spot = filter_active_markets(binance, 'spot')
-    binance_perp = filter_active_markets(binance, 'future')
-    bybit_spot = filter_active_markets(bybit, 'spot')
-    bybit_perp = filter_active_markets(bybit, 'future')
+    try:
+        await bybit.load_markets()
+    except ccxt.ExchangeNotAvailable as e:
+        logging.error(f"Bybit unavailable (blocked or restricted): {e}")
+        bybit = None
+
+    binance_spot = filter_active_markets(binance, 'spot') if binance else []
+    binance_perp = filter_active_markets(binance, 'future') if binance else []
+    bybit_spot = filter_active_markets(bybit, 'spot') if bybit else []
+    bybit_perp = filter_active_markets(bybit, 'future') if bybit else []
 
     logging.info(f"Active markets found - Binance spot: {len(binance_spot)}, Binance perp: {len(binance_perp)}, Bybit spot: {len(bybit_spot)}, Bybit perp: {len(bybit_perp)}")
 
@@ -232,14 +246,18 @@ async def main():
 
     symbol_exchange_map = {}
     for symbol in unique_symbols:
-        if symbol in binance.markets:
+        if binance and symbol in binance.markets:
             symbol_exchange_map[symbol] = binance
-        elif symbol in bybit.markets:
+        elif bybit and symbol in bybit.markets:
             symbol_exchange_map[symbol] = bybit
         else:
             logging.warning(f"Symbol {symbol} not found on any exchange")
 
     logging.info(f"Total unique active symbols to scan: {len(unique_symbols)}")
+
+    if not symbol_exchange_map:
+        logging.warning("No symbols to scan, exiting.")
+        return
 
     tasks = [check_candles(symbol_exchange_map[symbol], symbol) for symbol in unique_symbols]
     all_results = await asyncio.gather(*tasks)
@@ -248,8 +266,10 @@ async def main():
 
     await send_telegram_message(message)
 
-    await binance.close()
-    await bybit.close()
+    if binance:
+        await binance.close()
+    if bybit:
+        await bybit.close()
 
     proxy_pool.stop()
 
