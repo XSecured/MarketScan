@@ -1,5 +1,5 @@
-python-binance>=1.0.16
-bybit>=2.0.0
+python-binance>=1.0.29
+pybit>=2.0.0
 python-telegram-bot>=20.0
 aiohttp>=3.8.1
 pandas>=1.3.0
