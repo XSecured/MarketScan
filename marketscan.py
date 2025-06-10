@@ -419,20 +419,21 @@ def floats_are_equal(a, b, tol=1e-8):
     return abs(a - b) < tol
 
 def check_equal_price_and_classify(df):
-    """Check if last two closed candles have equal close=open, classify by last closed candle color"""
+    """Check if last two CLOSED candles have equal close=open, classify by last closed candle color"""
     if df.empty or len(df) < 3:
         return None, None
     
-    # df.iloc[-3] = First of the two closed candles
-    # df.iloc[-2] = Second of the two closed candles (last closed)
-    # df.iloc[-1] = Current candle (live)
+    # Only check the first two candles (last two CLOSED candles)
+    # df.iloc[0] = Second to last closed candle
+    # df.iloc[1] = Last closed candle
+    # df.iloc[2] = Current candle (exclude this - might be live)
     
-    first_closed = df.iloc[-3]
-    last_closed = df.iloc[-2]
+    second_last_closed = df.iloc[0]  # Older of the two closed candles
+    last_closed = df.iloc[1]         # Newer of the two closed candles
     
-    # Check if first_closed_close = last_closed_open
-    if floats_are_equal(first_closed['close'], last_closed['open']):
-        equal_price = first_closed['close']
+    # Check if second_last_closed['close'] == last_closed['open']
+    if floats_are_equal(second_last_closed['close'], last_closed['open']):
+        equal_price = second_last_closed['close']
         
         # Classify based on last closed candle color
         if last_closed['close'] > last_closed['open']:
@@ -443,9 +444,10 @@ def check_equal_price_and_classify(df):
     return None, None
 
 def current_candle_touched_price(df, price):
-    if df.empty or len(df) < 1:
+    if df.empty or len(df) < 3:
         return False
-    current_candle = df.iloc[-1]
+    # Check if current candle (most recent) has touched the price
+    current_candle = df.iloc[2]  # This is the current/live candle
     return current_candle['low'] <= price <= current_candle['high']
 
 # --- Main async scanning and reporting ---
