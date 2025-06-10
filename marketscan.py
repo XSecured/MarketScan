@@ -338,24 +338,35 @@ class BybitClient:
         return []
 
     def fetch_ohlcv(self, symbol, interval, limit=100, market="spot"):
-        url = 'https://api.bybit.com/v5/market/kline'
-        category = 'linear' if market == 'perp' else 'spot'
-        params = {
-            'category': category,
-            'symbol': symbol,
-            'interval': interval,
-            'limit': limit
-        }
-        attempt = 1
-        while attempt <= self.max_retries:
-            try:
-                proxies = self._get_proxy_dict()
-                resp = requests.get(url, params=params, proxies=proxies, timeout=10)
-                resp.raise_for_status()
-                data = resp.json()
-                klines = data['result']['list']
-                if not klines:
-                    raise RuntimeError(f"No kline data for {symbol} {interval} {market}")
+    url = 'https://api.bybit.com/v5/market/kline'
+    category = 'linear' if market == 'perp' else 'spot'
+
+    interval_map = {
+        "1M": "M",
+        "1w": "W",
+        "1d": "D"
+    }
+    bybit_interval = interval_map.get(interval)
+    if bybit_interval is None:
+        raise ValueError(f"Unsupported interval {interval} for Bybit")
+
+    params = {
+        'category': category,
+        'symbol': symbol,
+        'interval': bybit_interval,
+        'limit': limit
+    }
+
+    attempt = 1
+    while attempt <= self.max_retries:
+        try:
+            proxies = self._get_proxy_dict()
+            resp = requests.get(url, params=params, proxies=proxies, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            klines = data['result']['list']
+            if not klines:
+                raise RuntimeError(f"No kline data for {symbol} {interval} {market}")
                 # Bybit V5 returns list of lists: [openTime, open, high, low, close, volume, turnover]
                 df = pd.DataFrame(klines, columns=['openTime', 'open', 'high', 'low', 'close', 'volume', 'turnover'])
                 df[['open', 'close', 'high', 'low', 'volume']] = df[['open', 'close', 'high', 'low', 'volume']].astype(float)
