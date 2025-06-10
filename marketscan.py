@@ -9,7 +9,6 @@ import os
 import asyncio
 from telegram import Bot
 import random
-import re
 
 # List of symbols to ignore in all scanning
 IGNORED_SYMBOLS = {
@@ -17,42 +16,38 @@ IGNORED_SYMBOLS = {
     "ZKJUSDT", "FDUSDUSDT", "XUSDUSDT", "EURUSDT", "EURIUSDT"
 }
 
-# --- Proxy system (same as EMA bot) ---
+# --- Proxy system ---
 
 def fetch_proxies_from_url(url: str, default_scheme: str = "http") -> list:
-    """Fetches proxies from a URL, supporting both http:// and https:// schemes."""
     proxies = []
     try:
         response = requests.get(url, timeout=10)
-        response.raise_for_status()  # Raises HTTPError for bad responses (4xx or 5xx)
+        response.raise_for_status()
         lines = response.text.strip().splitlines()
         for line in lines:
             proxy = line.strip()
             if not proxy:
-                continue  # Skip empty lines
+                continue
             if "://" in proxy:
-                proxies.append(proxy)  # Use proxy as is if scheme is already present
+                proxies.append(proxy)
             else:
-                proxies.append(f"{default_scheme}://{proxy}")  # Add default scheme if missing
+                proxies.append(f"{default_scheme}://{proxy}")
         logging.info("Fetched %d proxies from %s", len(proxies), url)
     except requests.exceptions.RequestException as e:
         logging.error("Error fetching proxies from URL %s: %s", url, e)
     return proxies
 
 def test_proxy(proxy: str, timeout=5) -> bool:
-    """Tests if a proxy is working by making a request to Binance API."""
-    test_url = "https://api.binance.com/api/v3/time"  # Using Binance time endpoint for testing
+    test_url = "https://api.binance.com/api/v3/time"
     try:
         response = requests.get(test_url, proxies={"http": proxy, "https": proxy}, timeout=timeout)
-        return 200 <= response.status_code < 300  # Return True if status code is in 200-299 range
+        return 200 <= response.status_code < 300
     except Exception:
-        return False  # Return False if any exception occurred during the test
+        return False
 
 def test_proxies_concurrently(proxies: list, max_workers: int = 50, max_working: int = 20) -> list:
-    """Tests proxies concurrently using a thread pool and returns a list of working proxies."""
     working = []
     tested = 0
-    dead = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(test_proxy, proxy): proxy for proxy in proxies}
         try:
@@ -65,10 +60,7 @@ def test_proxies_concurrently(proxies: list, max_workers: int = 50, max_working:
                         logging.info(f"Proxy check: Tested {tested} | Working: {len(working)} | Dead: {tested - len(working)}")
                     if len(working) >= max_working:
                         break
-                else:
-                    dead += 1
         finally:
-            # Cancel any pending futures if enough working proxies are found
             if len(working) >= max_working:
                 for f in futures:
                     f.cancel()
@@ -76,7 +68,6 @@ def test_proxies_concurrently(proxies: list, max_workers: int = 50, max_working:
     return working[:max_working]
 
 class ProxyPool:
-    """Manages a pool of proxies, handling fetching, testing, and cycling."""
     def __init__(self, max_pool_size=25, proxy_check_interval=600, max_failures=3):
         self.lock = threading.Lock()
         self.max_pool_size = max_pool_size
@@ -84,13 +75,12 @@ class ProxyPool:
         self.max_failures = max_failures
 
         self.proxies = []
-        self.proxy_failures = {}  # proxy -> failure count
-        self.failed_proxies = set()  # set of proxies that have reached max_failures
-        self.proxy_cycle = None  # itertools.cycle for rotating through proxies
-        self._stop_event = threading.Event()  # Event to stop background threads
+        self.proxy_failures = {}
+        self.failed_proxies = set()
+        self.proxy_cycle = None
+        self._stop_event = threading.Event()
 
     def get_next_proxy(self):
-        """Returns the next working proxy from the pool."""
         with self.lock:
             if not self.proxies:
                 logging.warning("Proxy pool empty when requesting next proxy.")
@@ -98,15 +88,13 @@ class ProxyPool:
             for _ in range(len(self.proxies)):
                 proxy = next(self.proxy_cycle)
                 if proxy not in self.failed_proxies:
-                    return proxy  # Return proxy if it's not marked as failed
+                    return proxy
             logging.warning("All proxies in pool are marked as failed.")
             return None
 
     def mark_proxy_failure(self, proxy):
-        """Marks a proxy as failed, incrementing its failure count."""
         if proxy is None:
-            return  # Ignore if proxy is None
-
+            return
         with self.lock:
             count = self.proxy_failures.get(proxy, 0) + 1
             self.proxy_failures[proxy] = count
@@ -116,33 +104,29 @@ class ProxyPool:
                 if proxy in self.proxies:
                     self.proxies.remove(proxy)
                     logging.warning(f"Proxy {proxy} removed from pool due to repeated failures.")
-                self.proxy_cycle = itertools.cycle(self.proxies) if self.proxies else None  # Update cycle
+                self.proxy_cycle = itertools.cycle(self.proxies) if self.proxies else None
 
     def populate_from_url(self, url: str, default_scheme: str = "http"):
-        """Populates the proxy pool from a URL."""
         new_proxies = fetch_proxies_from_url(url, default_scheme)
         working = test_proxies_concurrently(new_proxies, max_working=self.max_pool_size)
         with self.lock:
             self.proxies = working[:self.max_pool_size]
-            self.proxy_failures.clear()  # Reset failure counts for all proxies
-            self.failed_proxies.clear()  # Clear set of failed proxies
-            self.proxy_cycle = itertools.cycle(self.proxies) if self.proxies else None  # Create a new cycle
+            self.proxy_failures.clear()
+            self.failed_proxies.clear()
+            self.proxy_cycle = itertools.cycle(self.proxies) if self.proxies else None
             logging.info(f"Proxy pool filled with {len(self.proxies)} proxies from URL.")
 
     def start_checker(self):
-        """Starts a background thread to periodically check proxy health."""
         thread = threading.Thread(target=self.proxy_checker_loop, daemon=True)
         thread.start()
 
     def proxy_checker_loop(self):
-        """Periodically checks the health of proxies in the pool."""
         while not self._stop_event.is_set():
             logging.info("Running proxy pool health check...")
             self.check_proxies()
             self._stop_event.wait(self.proxy_check_interval)
 
     def check_proxies(self):
-        """Checks the health of proxies and updates the pool."""
         working = test_proxies_concurrently(self.proxies, max_workers=50, max_working=len(self.proxies))
         with self.lock:
             initial_count = len(self.proxies)
@@ -156,7 +140,6 @@ class ProxyPool:
             self.populate_to_max()
 
     def populate_to_max(self):
-        """Populates the proxy pool to the maximum size."""
         with self.lock:
             needed = self.max_pool_size - len(self.proxies)
             if needed <= 0:
@@ -168,34 +151,29 @@ class ProxyPool:
             logging.info(f"Proxy pool populated to max size: {len(self.proxies)}/{self.max_pool_size}")
 
     def get_new_proxies(self, count: int) -> list:
-        """Gets new proxies from a backup URL."""
-        backup_url = "https://raw.githubusercontent.com/ErcinDedeoglu/proxies/main/proxies/https.txt"  # Using a backup proxy list URL
+        backup_url = "https://raw.githubusercontent.com/ErcinDedeoglu/proxies/main/proxies/https.txt"
         new_proxies = fetch_proxies_from_url(backup_url)
         working = test_proxies_concurrently(new_proxies, max_working=count)
         return working
 
     def stop(self):
-        """Stops the proxy checker thread."""
         self._stop_event.set()
 
 # --- Binance Client ---
 
 class BinanceClient:
-    """Client for interacting with the Binance API, handling proxy rotation and retries."""
     def __init__(self, proxy_pool: ProxyPool, max_retries=5, retry_delay=2):
         self.proxy_pool = proxy_pool
         self.max_retries = max_retries
         self.retry_delay = retry_delay
 
     def _get_proxy_dict(self):
-        """Gets a proxy dictionary from the proxy pool."""
         proxy = self.proxy_pool.get_next_proxy()
         if proxy is None:
             raise RuntimeError("No working proxies available")
         return {"http": proxy, "https": proxy}
 
     def get_perp_symbols(self):
-        """Fetches perpetual futures symbols from Binance API."""
         url = 'https://fapi.binance.com/fapi/v1/exchangeInfo'
         for attempt in range(1, self.max_retries + 1):
             proxy = self.proxy_pool.get_next_proxy()
@@ -227,7 +205,6 @@ class BinanceClient:
         return []
 
     def get_spot_symbols(self):
-        """Fetches spot symbols from Binance API."""
         url = 'https://api.binance.com/api/v3/exchangeInfo'
         for attempt in range(1, self.max_retries + 1):
             try:
@@ -252,7 +229,6 @@ class BinanceClient:
         return []
 
     def fetch_ohlcv(self, symbol, interval, limit=100, market="spot"):
-        """Fetches OHLCV data from Binance API with proxy rotation and retries."""
         if market == "spot":
             url = 'https://api.binance.com/api/v3/klines'
         elif market == "perp":
@@ -264,7 +240,7 @@ class BinanceClient:
         attempt = 1
         max_proxy_refresh_attempts = 3
         proxy_refresh_attempts = 0
-        proxies = None # Initialize proxies to None
+        proxies = None
         while attempt <= self.max_retries:
             try:
                 proxies = self._get_proxy_dict()
@@ -292,9 +268,9 @@ class BinanceClient:
                         logging.error("PROXY_LIST_URL not set, cannot refresh proxies")
                         raise
                     time.sleep(5)
-                    continue  # Retry without incrementing attempt
+                    continue
                 else:
-                    raise  # Re-raise other RuntimeErrors
+                    raise
             except Exception as e:
                 logging.warning(f"Attempt {attempt} failed fetching OHLCV for {symbol} ({market}) {interval}: {e}")
                 if proxies:
@@ -304,24 +280,21 @@ class BinanceClient:
         logging.error(f"All retries failed fetching OHLCV for {symbol} ({market}) {interval}")
         raise RuntimeError(f"Failed to fetch OHLCV for {symbol} ({market}) {interval}")
 
-# --- Bybit Client (API V5) ---
+# --- Bybit Client ---
 
 class BybitClient:
-    """Client for interacting with the Bybit API, handling proxy rotation, retries, and API version compatibility."""
     def __init__(self, proxy_pool: ProxyPool, max_retries=5, retry_delay=2):
         self.proxy_pool = proxy_pool
         self.max_retries = max_retries
         self.retry_delay = retry_delay
 
     def _get_proxy_dict(self):
-        """Gets a proxy dictionary from the proxy pool."""
         proxy = self.proxy_pool.get_next_proxy()
         if proxy is None:
             raise RuntimeError("No working proxies available")
         return {"http": proxy, "https": proxy}
 
     def get_perp_symbols(self):
-        """Fetches perpetual futures symbols from Bybit API V5."""
         url = 'https://api.bybit.com/v5/market/instruments-info'
         params = {'category': 'linear'}
         for attempt in range(1, self.max_retries + 1):
@@ -347,7 +320,6 @@ class BybitClient:
         return []
 
     def get_spot_symbols(self):
-        """Fetches spot symbols from Bybit API V5."""
         url = 'https://api.bybit.com/v5/market/instruments-info'
         params = {'category': 'spot'}
         for attempt in range(1, self.max_retries + 1):
@@ -373,7 +345,6 @@ class BybitClient:
         return []
 
     def fetch_ohlcv(self, symbol, interval, limit=100, market="spot"):
-        """Fetches OHLCV data from Bybit API V5 with proxy rotation and retries."""
         url = 'https://api.bybit.com/v5/market/kline'
         category = 'linear' if market == 'perp' else 'spot'
 
@@ -395,7 +366,7 @@ class BybitClient:
         attempt = 1
         max_proxy_refresh_attempts = 3
         proxy_refresh_attempts = 0
-        proxies = None  # Initialize proxies to None
+        proxies = None
         while attempt <= self.max_retries:
             try:
                 proxies = self._get_proxy_dict()
@@ -422,9 +393,9 @@ class BybitClient:
                         logging.error("PROXY_LIST_URL not set, cannot refresh proxies")
                         raise
                     time.sleep(5)
-                    continue  # Retry without incrementing attempt
+                    continue
                 else:
-                    raise  # Re-raise other RuntimeErrors
+                    raise
             except Exception as e:
                 logging.warning(f"Attempt {attempt} failed fetching Bybit OHLCV for {symbol} ({market}) {interval}: {e}")
                 if proxies:
@@ -437,37 +408,42 @@ class BybitClient:
 # --- Helper functions ---
 
 def deduplicate_symbols(perp_list, spot_list):
-    """Deduplicates symbols, giving preference to perps."""
     spot_only = set(spot_list) - set(perp_list)
     all_symbols = list(perp_list) + list(spot_only)
     return [s for s in all_symbols if s not in IGNORED_SYMBOLS]
 
-def is_open_close_range_untouched(df):
+def floats_are_equal(a, b, tol=1e-8):
+    return abs(a - b) < tol
+
+def check_close_equals_next_open(df):
+    if df.empty or len(df) < 3:
+        return None
+    if floats_are_equal(df.iloc[0]['close'], df.iloc[1]['open']):
+        return df.iloc[0]['close']
+    if floats_are_equal(df.iloc[1]['close'], df.iloc[2]['open']):
+        return df.iloc[1]['close']
+    return None
+
+def current_candle_touched_price(df, price):
     if df.empty or len(df) < 1:
         return False
-
     current_candle = df.iloc[-1]
-    open_price = current_candle['open']
-    close_price = current_candle['close']
-    high = current_candle['high']
-    low = current_candle['low']
+    return current_candle['low'] <= price <= current_candle['high']
 
-    if close_price > open_price:
-        # Bullish candle: price untouched if low >= open
-        return low >= open_price
-
-    elif close_price < open_price:
-        # Bearish candle: price untouched if high <= open
-        return high <= open_price
-
+def get_candle_bullish_bearish(df):
+    if df.empty or len(df) < 1:
+        return "neutral"
+    current_candle = df.iloc[-1]
+    if current_candle['close'] > current_candle['open']:
+        return "bullish"
+    elif current_candle['close'] < current_candle['open']:
+        return "bearish"
     else:
-        # Doji candle or open == close, treat as touched
-        return False
+        return "neutral"
 
-# --- Main async function ---
+# --- Main async scanning and reporting ---
 
 async def main():
-    """Main function to fetch symbols, OHLCV data, and send Telegram reports."""
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 
     proxy_url = os.getenv("PROXY_LIST_URL")
@@ -489,14 +465,12 @@ async def main():
     binance_client = BinanceClient(proxy_pool)
     bybit_client = BybitClient(proxy_pool)
 
-    # Fetch symbols from both exchanges
     binance_perp = set(binance_client.get_perp_symbols())
     binance_spot = set(binance_client.get_spot_symbols())
 
     bybit_perp = set(bybit_client.get_perp_symbols())
     bybit_spot = set(bybit_client.get_spot_symbols())
 
-    # Deduplicate symbols per exchange
     binance_symbols = deduplicate_symbols(binance_perp, binance_spot)
     bybit_symbols = deduplicate_symbols(bybit_perp, bybit_spot)
 
@@ -507,14 +481,16 @@ async def main():
     lock = threading.Lock()
 
     def scan_symbol(exchange_name, client, symbol, perp_set, spot_set):
-        """Scans a single symbol for the specified candle condition."""
         market = "perp" if symbol in perp_set else "spot"
         for interval in ["1M", "1w", "1d"]:
             try:
                 df = client.fetch_ohlcv(symbol, interval, limit=3, market=market)
-                if is_open_close_range_untouched(df):
-                    with lock:
-                        results.append((exchange_name, symbol, market, interval))
+                equal_price = check_close_equals_next_open(df)
+                if equal_price is not None:
+                    if not current_candle_touched_price(df, equal_price):
+                        candle_type = get_candle_bullish_bearish(df)
+                        with lock:
+                            results.append((exchange_name, symbol, market, interval, candle_type))
             except Exception as e:
                 logging.warning(f"Failed {exchange_name} {symbol} {market} {interval}: {e}")
 
@@ -531,15 +507,13 @@ async def main():
             except Exception as e:
                 logging.error(f"Error in scanning thread: {e}")
 
-    # Prepare Telegram message
     if not results:
-        message = "No symbols found where current candle's open-close range is untouched by price."
+        message = "No symbols found where last two closed candles have equal close==next open price and current candle has not touched that price yet."
     else:
-        message = "*Symbols with current candle open-close range untouched by price:*\n\n"
-        for exch, sym, market, interval in results:
-            message += f"- {exch} | {sym} | {market} | {interval}\n"
+        message = "*Symbols where last two closed candles have equal close==next open price and current candle untouched that price:*\n\n"
+        for exch, sym, market, interval, candle_type in results:
+            message += f"- {exch} | {sym} | {market} | {interval} | {candle_type}\n"
 
-    # Send Telegram message
     bot = Bot(token=TELEGRAM_TOKEN)
     try:
         await bot.send_message(chat_id=int(TELEGRAM_CHAT_ID), text=message, parse_mode='Markdown')
@@ -547,7 +521,6 @@ async def main():
     except Exception as e:
         logging.error(f"Failed to send Telegram message: {e}")
 
-# Run main
 if __name__ == "__main__":
     import asyncio
     asyncio.run(main())
