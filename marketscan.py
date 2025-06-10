@@ -158,7 +158,10 @@ def main():
     if not proxy_list_raw:
         logging.error("PROXY_LIST env var not set")
         exit(1)
-    proxies = [p.strip() for p in proxy_list_raw.split(",") if p.strip()]
+    proxies = [p.strip() for p in proxy_list_raw.splitlines() if p.strip()] # splitlines()
+    if not proxies:
+        logging.error("PROXY_LIST is empty after processing")
+        exit(1)
 
     proxy_pool = ProxyPool()
 
