@@ -15,7 +15,8 @@ import re
 # List of symbols to ignore in all scanning
 IGNORED_SYMBOLS = {
     "USDPUSDT", "USD1USDT", "TUSDUSDT", "AEURUSDT", "USDCUSDT",
-    "ZKJUSDT", "FDUSDUSDT", "XUSDUSDT", "EURUSDT", "EURIUSDT"
+    "ZKJUSDT", "FDUSDUSDT", "XUSDUSDT", "EURUSDT", "EURIUSDT", 
+    "USDYUSDT", "USDRUSDT"
 }
 
 # --- Proxy system ---
