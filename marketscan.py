@@ -443,10 +443,6 @@ def deduplicate_symbols(perp_list, spot_list):
     return [s for s in all_symbols if s not in IGNORED_SYMBOLS]
 
 def is_open_close_range_untouched(df):
-    """
-    Checks if the current candle's open-close range is untouched by price (high or low).
-    Returns True if the range is untouched, False otherwise.
-    """
     if df.empty or len(df) < 1:
         return False
 
@@ -456,19 +452,16 @@ def is_open_close_range_untouched(df):
     high = current_candle['high']
     low = current_candle['low']
 
-    lower = min(open_price, close_price)  # Lower bound of open-close range
-    upper = max(open_price, close_price)  # Upper bound of open-close range
-
-    # For bullish candle: check if low > lower bound of open-close range
     if close_price > open_price:
-        return low >= upper  # untouched if low is above the high of the range
+        # Bullish candle: price untouched if low >= open
+        return low >= open_price
 
-    # For bearish candle: check if high < upper bound of open-close range
     elif close_price < open_price:
-        return high <= lower  # untouched if high is below the low of the range
+        # Bearish candle: price untouched if high <= open
+        return high <= open_price
 
     else:
-        # Doji or equal open-close, consider touched
+        # Doji candle or open == close, treat as touched
         return False
 
 # --- Main async function ---
