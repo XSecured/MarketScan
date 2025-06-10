@@ -216,9 +216,7 @@ class BinanceClient:
                 spot_symbols = [
                     s['symbol']
                     for s in data['symbols']
-                    if s['status'] == 'TRADING' and
-                       s.get('quoteAsset') == 'USDT' and
-                       'SPOT' in s.get('permissions', [])
+                    if s['status'] == 'TRADING' and s.get('quoteAsset') == 'USDT'
                 ]
                 if spot_symbols:
                     logging.info(f"Fetched {len(spot_symbols)} spot USDT symbols successfully.")
@@ -290,16 +288,17 @@ class BybitClient:
         return {"http": proxy, "https": proxy}
 
     def get_perp_symbols(self):
-        url = 'https://api.bybit.com/v2/public/symbols'
+        url = 'https://api.bybit.com/v5/market/instruments-info'
+        params = {'category': 'linear'}
         for attempt in range(1, self.max_retries + 1):
             try:
                 proxies = self._get_proxy_dict()
-                resp = requests.get(url, proxies=proxies, timeout=10)
+                resp = requests.get(url, params=params, proxies=proxies, timeout=10)
                 resp.raise_for_status()
                 data = resp.json()
                 symbols = [
-                    s['name'] for s in data.get('result', [])
-                    if s['status'] == 'Trading' and s['quote_currency'] == 'USDT' and s.get('contract_type', '') == 'perpetual'
+                    s['symbol'] for s in data['result']['list']
+                    if s['status'] == 'Trading' and s['quoteCoin'] == 'USDT'
                 ]
                 if symbols:
                     logging.info(f"Fetched {len(symbols)} Bybit perp USDT symbols successfully.")
@@ -314,16 +313,17 @@ class BybitClient:
         return []
 
     def get_spot_symbols(self):
-        url = 'https://api.bybit.com/spot/v1/symbols'
+        url = 'https://api.bybit.com/v5/market/instruments-info'
+        params = {'category': 'spot'}
         for attempt in range(1, self.max_retries + 1):
             try:
                 proxies = self._get_proxy_dict()
-                resp = requests.get(url, proxies=proxies, timeout=10)
+                resp = requests.get(url, params=params, proxies=proxies, timeout=10)
                 resp.raise_for_status()
                 data = resp.json()
                 symbols = [
-                    s['name'] for s in data.get('result', [])
-                    if s['status'] == 'Trading' and s['quote_currency'] == 'USDT'
+                    s['symbol'] for s in data['result']['list']
+                    if s['status'] == 'Trading' and s['quoteCoin'] == 'USDT'
                 ]
                 if symbols:
                     logging.info(f"Fetched {len(symbols)} Bybit spot USDT symbols successfully.")
@@ -338,23 +338,14 @@ class BybitClient:
         return []
 
     def fetch_ohlcv(self, symbol, interval, limit=100, market="spot"):
-        interval_map = {
-            "1M": "1M",
-            "1w": "1W",
-            "1d": "1D"
+        url = 'https://api.bybit.com/v5/market/kline'
+        category = 'linear' if market == 'perp' else 'spot'
+        params = {
+            'category': category,
+            'symbol': symbol,
+            'interval': interval,
+            'limit': limit
         }
-        if interval not in interval_map:
-            raise ValueError(f"Unsupported interval {interval} for Bybit")
-
-        if market == "spot":
-            url = 'https://api.bybit.com/spot/quote/v1/kline'
-            params = {'symbol': symbol, 'interval': interval_map[interval], 'limit': limit}
-        elif market == "perp":
-            url = 'https://api.bybit.com/public/linear/kline'
-            params = {'symbol': symbol, 'interval': interval_map[interval], 'limit': limit}
-        else:
-            raise ValueError(f"Unknown market type: {market}")
-
         attempt = 1
         while attempt <= self.max_retries:
             try:
@@ -362,10 +353,11 @@ class BybitClient:
                 resp = requests.get(url, params=params, proxies=proxies, timeout=10)
                 resp.raise_for_status()
                 data = resp.json()
-                klines = data.get('result', [])
+                klines = data['result']['list']
                 if not klines:
                     raise RuntimeError(f"No kline data for {symbol} {interval} {market}")
-                df = pd.DataFrame(klines)
+                # Bybit V5 returns list of lists: [openTime, open, high, low, close, volume, turnover]
+                df = pd.DataFrame(klines, columns=['openTime', 'open', 'high', 'low', 'close', 'volume', 'turnover'])
                 df[['open', 'close', 'high', 'low', 'volume']] = df[['open', 'close', 'high', 'low', 'volume']].astype(float)
                 return df
             except Exception as e:
