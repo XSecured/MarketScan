@@ -423,33 +423,30 @@ def check_equal_price_and_classify(df):
     if df.empty or len(df) < 3:
         return None, None
     
-    # Only check the first two candles (last two CLOSED candles)
-    # df.iloc[0] = Second to last closed candle
-    # df.iloc[1] = Last closed candle
-    # df.iloc[2] = Current candle (exclude this - might be live)
-    
-    second_last_closed = df.iloc[0]  # Older of the two closed candles
-    last_closed = df.iloc[1]         # Newer of the two closed candles
+    # Simple: last two CLOSED candles
+    second_last_closed = df.iloc[0]  # Older closed candle
+    last_closed = df.iloc[1]         # Newer closed candle
+    # df.iloc[2] = current live candle (ignore)
     
     # Check if second_last_closed['close'] == last_closed['open']
-    if floats_are_equal(second_last_closed['close'], last_closed['open']):
-        equal_price = second_last_closed['close']
+    if floats_are_equal(float(second_last_closed['close']), float(last_closed['open'])):
+        equal_price = float(second_last_closed['close'])
         
         # Classify based on last closed candle color
-        if last_closed['close'] > last_closed['open']:
-            return equal_price, "bullish"  # Last closed candle was GREEN
-        elif last_closed['close'] < last_closed['open']:
-            return equal_price, "bearish"  # Last closed candle was RED
+        if float(last_closed['close']) > float(last_closed['open']):
+            return equal_price, "bullish"
+        elif float(last_closed['close']) < float(last_closed['open']):
+            return equal_price, "bearish"
     
     return None, None
 
 def current_candle_touched_price(df, price):
     if df.empty or len(df) < 3:
         return False
-    # Check if current candle (most recent) has touched the price
-    current_candle = df.iloc[2]  # This is the current/live candle
-    return current_candle['low'] <= price <= current_candle['high']
-
+    # Current live candle is df.iloc[2]
+    current_candle = df.iloc[2]
+    return float(current_candle['low']) <= price <= float(current_candle['high'])
+    
 # --- Main async scanning and reporting ---
 
 async def main():
@@ -493,9 +490,9 @@ async def main():
         market = "perp" if symbol in perp_set else "spot"
         for interval in ["1M", "1w", "1d"]:
             try:
-                df = client.fetch_ohlcv(symbol, interval, limit=3, market=market)
+                df = client.fetch_ohlcv(symbol, interval, limit=3, market=market)  # Back to 3!
                 equal_price, signal_type = check_equal_price_and_classify(df)
-                
+            
                 if equal_price is not None and signal_type is not None:
                     if not current_candle_touched_price(df, equal_price):
                         with lock:
