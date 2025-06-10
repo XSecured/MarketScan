@@ -418,32 +418,35 @@ def deduplicate_symbols(perp_list, spot_list):
 def floats_are_equal(a, b, tol=1e-8):
     return abs(a - b) < tol
 
-def check_close_equals_next_open(df):
+def check_equal_price_and_classify(df):
+    """Check if last two closed candles have equal close=open, classify by last closed candle color"""
     if df.empty or len(df) < 3:
-        return None
-    if floats_are_equal(df.iloc[0]['close'], df.iloc[1]['open']):
-        return df.iloc[0]['close']
-    if floats_are_equal(df.iloc[1]['close'], df.iloc[2]['open']):
-        return df.iloc[1]['close']
-    return None
+        return None, None
+    
+    # df.iloc[-3] = First of the two closed candles
+    # df.iloc[-2] = Second of the two closed candles (last closed)
+    # df.iloc[-1] = Current candle (live)
+    
+    first_closed = df.iloc[-3]
+    last_closed = df.iloc[-2]
+    
+    # Check if first_closed_close = last_closed_open
+    if floats_are_equal(first_closed['close'], last_closed['open']):
+        equal_price = first_closed['close']
+        
+        # Classify based on last closed candle color
+        if last_closed['close'] > last_closed['open']:
+            return equal_price, "bullish"  # Last closed candle was GREEN
+        elif last_closed['close'] < last_closed['open']:
+            return equal_price, "bearish"  # Last closed candle was RED
+    
+    return None, None
 
 def current_candle_touched_price(df, price):
     if df.empty or len(df) < 1:
         return False
     current_candle = df.iloc[-1]
     return current_candle['low'] <= price <= current_candle['high']
-
-# FIXED LOGIC: Swapped bullish/bearish as requested
-def get_candle_bullish_bearish(df):
-    if df.empty or len(df) < 1:
-        return "neutral"
-    current_candle = df.iloc[-1]
-    if current_candle['close'] > current_candle['open']:
-        return "bearish"  # Changed from "bullish" to "bearish"
-    elif current_candle['close'] < current_candle['open']:
-        return "bullish"  # Changed from "bearish" to "bullish"
-    else:
-        return "neutral"
 
 # --- Main async scanning and reporting ---
 
@@ -489,91 +492,25 @@ async def main():
         for interval in ["1M", "1w", "1d"]:
             try:
                 df = client.fetch_ohlcv(symbol, interval, limit=3, market=market)
-                equal_price = check_close_equals_next_open(df)
-                if equal_price is not None:
+                equal_price, signal_type = check_equal_price_and_classify(df)
+                
+                if equal_price is not None and signal_type is not None:
                     if not current_candle_touched_price(df, equal_price):
-                        candle_type = get_candle_bullish_bearish(df)
                         with lock:
-                            results.append((exchange_name, symbol, market, interval, candle_type))
+                            results.append((exchange_name, symbol, market, interval, signal_type))
             except Exception as e:
                 logging.warning(f"Failed {exchange_name} {symbol} {market} {interval}: {e}")
 
     all_symbols = [("Binance", binance_client, sym, binance_perp, binance_spot) for sym in binance_symbols] + \
                   [("Bybit", bybit_client, sym, bybit_perp, bybit_spot) for sym in bybit_symbols]
 
-    messages = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=25) as executor:
         futures = [executor.submit(scan_symbol, *args) for args in all_symbols]
         for _ in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Scanning symbols"):
-            pass  # Just iterate and tqdm does the progress
+            pass
 
-    if not results:
-        message = "🔍 *Price Gap Scanner*\n\nNo qualifying symbols found at this time."
-        messages = [message]
-    else:
-        # Organize results by bearish/bullish sections
-        bearish_results = [r for r in results if r[4] == "bearish"]
-        bullish_results = [r for r in results if r[4] == "bullish"]
-        neutral_results = [r for r in results if r[4] == "neutral"]
-        
-        # Create organized message
-        header = "🔍 *Price Gap Scanner*\n"
-        header += "_Close=Open gaps not yet touched by current candle_\n\n"
-        
-        messages = []
-        
-        # Build the message with sections
-        if bearish_results or bullish_results or neutral_results:
-            message = header
-            
-            if bearish_results:
-                message += "🔴 *BEARISH SIGNALS*\n"
-                for exch, sym, market, interval, _ in bearish_results:
-                    message += f"• {exch} | {sym} | {market.upper()} | {interval}\n"
-                message += "\n"
-            
-            if bullish_results:
-                message += "🟢 *BULLISH SIGNALS*\n"
-                for exch, sym, market, interval, _ in bullish_results:
-                    message += f"• {exch} | {sym} | {market.upper()} | {interval}\n"
-                message += "\n"
-            
-            if neutral_results:
-                message += "⚪ *NEUTRAL SIGNALS*\n"
-                for exch, sym, market, interval, _ in neutral_results:
-                    message += f"• {exch} | {sym} | {market.upper()} | {interval}\n"
-                message += "\n"
-            
-            # Split into chunks if message is too long
-            if len(message) > 4096:
-                chunks = []
-                current_chunk = header
-                
-                for section_name, section_results in [
-                    ("🔴 *BEARISH SIGNALS*\n", bearish_results),
-                    ("🟢 *BULLISH SIGNALS*\n", bullish_results),
-                    ("⚪ *NEUTRAL SIGNALS*\n", neutral_results)
-                ]:
-                    if section_results:
-                        section_text = section_name
-                        for exch, sym, market, interval, _ in section_results:
-                            line = f"• {exch} | {sym} | {market.upper()} | {interval}\n"
-                            if len(current_chunk) + len(section_text) + len(line) > 4096:
-                                chunks.append(current_chunk.strip())
-                                current_chunk = header + section_text + line
-                            else:
-                                if section_text not in current_chunk:
-                                    current_chunk += section_text
-                                current_chunk += line
-                        current_chunk += "\n"
-                
-                if current_chunk.strip() != header.strip():
-                    chunks.append(current_chunk.strip())
-                messages = chunks
-            else:
-                messages = [message.strip()]
-        else:
-            messages = [header + "No qualifying symbols found at this time."]
+    # Create beautiful organized messages
+    messages = create_beautiful_telegram_report(results)
 
     bot = Bot(token=TELEGRAM_TOKEN)
     for msg in messages:
@@ -582,6 +519,153 @@ async def main():
             logging.info("Telegram report sent successfully.")
         except Exception as e:
             logging.error(f"Failed to send Telegram message: {e}")
+
+def create_beautiful_telegram_report(results):
+    """Create beautifully formatted Telegram messages organized by sentiment, timeframe, and exchange"""
+    
+    if not results:
+        return ["🔍 *Close=Open Level Scanner*\n\n❌ No qualifying symbols found at this time."]
+    
+    # Organize results
+    bearish_results = [r for r in results if r[4] == "bearish"]
+    bullish_results = [r for r in results if r[4] == "bullish"]
+    
+    def organize_by_timeframe_and_exchange(data):
+        """Organize data by timeframe, then by exchange"""
+        organized = {}
+        for exchange, symbol, market, interval, _ in data:
+            if interval not in organized:
+                organized[interval] = {}
+            if exchange not in organized[interval]:
+                organized[interval][exchange] = []
+            organized[interval][exchange].append((symbol, market))
+        return organized
+    
+    def format_section(title, emoji, data):
+        """Format a section with proper hierarchy"""
+        if not data:
+            return ""
+        
+        section = f"{emoji} *{title}*\n"
+        organized = organize_by_timeframe_and_exchange(data)
+        
+        # Sort timeframes: 1M, 1w, 1d
+        timeframe_order = ["1M", "1w", "1d"]
+        for timeframe in timeframe_order:
+            if timeframe not in organized:
+                continue
+                
+            section += f"\n📅 *{timeframe} Timeframe*\n"
+            
+            # Sort exchanges alphabetically
+            for exchange in sorted(organized[timeframe].keys()):
+                symbols = organized[timeframe][exchange]
+                section += f"  🏢 _{exchange}_:\n"
+                
+                # Group by market type and sort symbols
+                spot_symbols = sorted([s[0] for s in symbols if s[1] == "spot"])
+                perp_symbols = sorted([s[0] for s in symbols if s[1] == "perp"])
+                
+                if spot_symbols:
+                    section += f"    💰 SPOT: {', '.join(spot_symbols)}\n"
+                if perp_symbols:
+                    section += f"    ⚡ PERP: {', '.join(perp_symbols)}\n"
+        
+        return section + "\n"
+    
+    # Build header
+    total_signals = len(results)
+    header = "🔍 *Close=Open Level Scanner*\n"
+    header += f"_Last two closed candles with equal close=open price_\n"
+    header += f"_Current candle hasn't touched that level yet_\n\n"
+    header += f"📊 *Total Signals Found: {total_signals}*\n"
+    header += f"🔴 Bearish: {len(bearish_results)} | 🟢 Bullish: {len(bullish_results)}\n"
+    header += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    
+    # Build sections
+    message = header
+    message += format_section("BEARISH SIGNALS", "🔴", bearish_results)
+    message += format_section("BULLISH SIGNALS", "🟢", bullish_results)
+    
+    # Add footer
+    message += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    message += "💡 _These are potential reversal or continuation zones_\n"
+    message += "⚠️ _Always do your own research before trading_"
+    
+    # Split into chunks if too long
+    if len(message) <= 4096:
+        return [message]
+    
+    # Split by major sections if needed
+    messages = []
+    base_header = header
+    
+    # Send bearish section
+    if bearish_results:
+        bearish_msg = base_header + format_section("BEARISH SIGNALS", "🔴", bearish_results)
+        if len(bearish_msg) <= 4096:
+            messages.append(bearish_msg.strip())
+        else:
+            # Further split bearish by timeframe if needed
+            messages.extend(split_large_section("BEARISH SIGNALS", "🔴", bearish_results, base_header))
+    
+    # Send bullish section  
+    if bullish_results:
+        bullish_msg = base_header + format_section("BULLISH SIGNALS", "🟢", bullish_results)
+        if len(bullish_msg) <= 4096:
+            messages.append(bullish_msg.strip())
+        else:
+            # Further split bullish by timeframe if needed
+            messages.extend(split_large_section("BULLISH SIGNALS", "🟢", bullish_results, base_header))
+    
+    return messages
+
+def split_large_section(title, emoji, data, base_header):
+    """Split large sections by timeframe"""
+    messages = []
+    organized = {}
+    
+    for exchange, symbol, market, interval, _ in data:
+        if interval not in organized:
+            organized[interval] = []
+        organized[interval].append((exchange, symbol, market, interval, _))
+    
+    timeframe_order = ["1M", "1w", "1d"]
+    for timeframe in timeframe_order:
+        if timeframe not in organized:
+            continue
+        
+        timeframe_header = base_header + f"{emoji} *{title} - {timeframe}*\n\n"
+        timeframe_msg = timeframe_header + format_section("", "", organized[timeframe])
+        
+        if len(timeframe_msg) <= 4096:
+            messages.append(timeframe_msg.strip())
+        else:
+            # If still too long, split by exchange
+            messages.extend(split_by_exchange(organized[timeframe], timeframe_header))
+    
+    return messages
+
+def split_by_exchange(data, header):
+    """Split by exchange if needed"""
+    messages = []
+    exchanges = {}
+    
+    for exchange, symbol, market, interval, signal_type in data:
+        if exchange not in exchanges:
+            exchanges[exchange] = []
+        exchanges[exchange].append((exchange, symbol, market, interval, signal_type))
+    
+    for exchange in sorted(exchanges.keys()):
+        exchange_msg = header + f"🏢 _{exchange}_\n\n"
+        exchange_data = exchanges[exchange]
+        
+        for _, symbol, market, _, _ in exchange_data:
+            exchange_msg += f"• {symbol} ({market.upper()})\n"
+        
+        messages.append(exchange_msg.strip())
+    
+    return messages
 
 if __name__ == "__main__":
     import asyncio
