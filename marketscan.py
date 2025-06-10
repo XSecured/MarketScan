@@ -418,88 +418,59 @@ def deduplicate_symbols(perp_list, spot_list):
 def floats_are_equal(a, b, tol=1e-8):
     return abs(a - b) < tol
 
-def check_equal_price_and_classify(df, symbol=None, interval=None):
-    """Check if last two CLOSED candles have equal close=open, classify by last closed candle color"""
+def check_equal_price_and_classify(df):
+    """Check if last two CLOSED candles have equal close=open AND opposite colors for reversal signal"""
     if df.empty or len(df) < 3:
-        if symbol:
-            logging.warning(f"Insufficient data for {symbol} {interval}: {len(df)} candles")
         return None, None
     
-    # Simple: last two CLOSED candles
-    second_last_closed = df.iloc[0]  # Older closed candle
-    last_closed = df.iloc[1]         # Newer closed candle
-    # df.iloc[2] = current live candle (ignore)
+    # CORRECTED: API returns newest to oldest
+    # df.iloc[0] = Current candle (ignore)
+    # df.iloc[1] = Last closed candle
+    # df.iloc[2] = Second to last closed candle
     
-    # Extract values for logging
+    second_last_closed = df.iloc[2]  # Older candle
+    last_closed = df.iloc[1]         # Newer candle
+    
+    # Extract values
+    second_last_open = float(second_last_closed['open'])
     second_last_close = float(second_last_closed['close'])
     last_open = float(last_closed['open'])
     last_close = float(last_closed['close'])
-    last_open_candle = float(last_closed['open'])
     
-    # Special debug logging for problematic symbols
-    if symbol and symbol in ["AAVEUSDT", "PEPEUSDT", "1000PEPEUSDT", "GNOUSDT"] and interval == "1M":
-        logging.info(f"\n=== DEBUG {symbol} {interval} ===")
-        logging.info(f"DataFrame shape: {df.shape}")
-        logging.info(f"Candle 0 (older): open={second_last_closed['open']:.12f}, close={second_last_close:.12f}")
-        logging.info(f"Candle 1 (newer): open={last_open:.12f}, close={last_close:.12f}")
-        logging.info(f"Candle 2 (current): open={df.iloc[2]['open']:.12f}, close={df.iloc[2]['close']:.12f}")
-        logging.info(f"Checking condition: {second_last_close:.12f} == {last_open:.12f}")
-        logging.info(f"Absolute difference: {abs(second_last_close - last_open):.15f}")
-        logging.info(f"Tolerance threshold: 1e-10 = {1e-10:.15f}")
+    # Determine candle colors
+    second_last_is_green = second_last_close > second_last_open
+    second_last_is_red = second_last_close < second_last_open
+    last_is_green = last_close > last_open
+    last_is_red = last_close < last_open
     
     # Check if second_last_closed['close'] == last_closed['open']
     if floats_are_equal(second_last_close, last_open):
         equal_price = second_last_close
         
-        # Log the match found
-        logging.info(f"🎯 MATCH FOUND: {symbol or 'Unknown'} {interval or 'Unknown'} - Equal price: {equal_price:.12f}")
-        
-        # Classify based on last closed candle color
-        if last_close > last_open_candle:
-            logging.info(f"  → Classified as BULLISH (close {last_close:.8f} > open {last_open_candle:.8f})")
+        # BULLISH: RED candle followed by GREEN candle (reversal pattern)
+        if second_last_is_red and last_is_green:
             return equal_price, "bullish"
-        elif last_close < last_open_candle:
-            logging.info(f"  → Classified as BEARISH (close {last_close:.8f} < open {last_open_candle:.8f})")
+        
+        # BEARISH: GREEN candle followed by RED candle (reversal pattern)  
+        elif second_last_is_green and last_is_red:
             return equal_price, "bearish"
-        else:
-            logging.info(f"  → Classified as DOJI (close {last_close:.8f} == open {last_open_candle:.8f}) - FILTERED OUT")
-    else:
-        # Log when no match is found for debug symbols
-        if symbol and symbol in ["AAVEUSDT", "PEPEUSDT", "1000PEPEUSDT", "GNOUSDT"] and interval == "1M":
-            logging.info(f"❌ NO MATCH: {symbol} {interval} - Difference too large")
+        
+        # FILTERED OUT: Same color candles (no reversal signal)
+        # This eliminates continuation patterns and keeps only reversals
     
     return None, None
 
-def current_candle_touched_price(df, price, symbol=None, interval=None):
+def current_candle_touched_price(df, price):
     if df.empty or len(df) < 3:
         return False
-    
-    # Current live candle is df.iloc[2]
-    current_candle = df.iloc[2]
-    current_low = float(current_candle['low'])
-    current_high = float(current_candle['high'])
-    
-    touched = current_low <= price <= current_high
-    
-    if symbol and symbol in ["AAVEUSDT", "PEPEUSDT", "1000PEPEUSDT", "GNOUSDT"]:
-        logging.info(f"Current candle touch check for {symbol}: price={price:.8f}, low={current_low:.8f}, high={current_high:.8f}, touched={touched}")
-    
-    return touched
+    # Current candle is df.iloc[0] (newest/live)
+    current_candle = df.iloc[0]
+    return float(current_candle['low']) <= price <= float(current_candle['high'])
     
 # --- Main async scanning and reporting ---
 
 async def main():
-    # Enhanced logging configuration
-    logging.basicConfig(
-        level=logging.INFO, 
-        format='%(asctime)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
-        handlers=[
-            logging.StreamHandler(),  # Console output
-            logging.FileHandler('scanner_debug.log', mode='w')  # File output
-        ]
-    )
-    
-    logging.info("🚀 Starting Close=Open Level Scanner")
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 
     proxy_url = os.getenv("PROXY_LIST_URL")
     if not proxy_url:
@@ -520,7 +491,6 @@ async def main():
     binance_client = BinanceClient(proxy_pool)
     bybit_client = BybitClient(proxy_pool)
 
-    logging.info("📊 Fetching exchange symbols...")
     binance_perp = set(binance_client.get_perp_symbols())
     binance_spot = set(binance_client.get_spot_symbols())
 
@@ -535,100 +505,49 @@ async def main():
 
     results = []
     lock = threading.Lock()
-    scan_count = 0
-    match_count = 0
-    filtered_count = 0
 
     def scan_symbol(exchange_name, client, symbol, perp_set, spot_set):
-        nonlocal scan_count, match_count, filtered_count
-        
         market = "perp" if symbol in perp_set else "spot"
         for interval in ["1M", "1w", "1d"]:
             try:
-                with lock:
-                    scan_count += 1
-                
-                # Special logging for debug symbols
-                is_debug_symbol = symbol in ["AAVEUSDT", "PEPEUSDT", "1000PEPEUSDT", "GNOUSDT"]
-                
-                if is_debug_symbol:
-                    logging.info(f"\n🔍 SCANNING DEBUG SYMBOL: {exchange_name} {symbol} {market} {interval}")
-                
                 df = client.fetch_ohlcv(symbol, interval, limit=3, market=market)
-                
-                if is_debug_symbol and interval == "1M":
-                    logging.info(f"Raw data for {symbol}:")
-                    for i, row in df.iterrows():
-                        logging.info(f"  Row {i}: O={row['open']:.12f} H={row['high']:.12f} L={row['low']:.12f} C={row['close']:.12f}")
-                
-                equal_price, signal_type = check_equal_price_and_classify(df, symbol, interval)
+                equal_price, signal_type = check_equal_price_and_classify(df)
             
                 if equal_price is not None and signal_type is not None:
-                    with lock:
-                        match_count += 1
-                    
-                    touched = current_candle_touched_price(df, equal_price, symbol, interval)
-                    
-                    if not touched:
-                        logging.info(f"✅ SIGNAL ADDED: {exchange_name} {symbol} {market} {interval} {signal_type.upper()} @ {equal_price:.8f}")
+                    if not current_candle_touched_price(df, equal_price):
                         with lock:
                             results.append((exchange_name, symbol, market, interval, signal_type))
-                    else:
-                        with lock:
-                            filtered_count += 1
-                        logging.info(f"🚫 SIGNAL FILTERED (price touched): {exchange_name} {symbol} {market} {interval} {signal_type.upper()} @ {equal_price:.8f}")
-                        
-                elif is_debug_symbol and interval == "1M":
-                    logging.info(f"❌ NO SIGNAL: {exchange_name} {symbol} {market} {interval}")
-                    
             except Exception as e:
-                logging.error(f"❌ SCAN FAILED: {exchange_name} {symbol} {market} {interval}: {e}")
+                logging.warning(f"Failed {exchange_name} {symbol} {market} {interval}: {e}")
 
     all_symbols = [("Binance", binance_client, sym, binance_perp, binance_spot) for sym in binance_symbols] + \
                   [("Bybit", bybit_client, sym, bybit_perp, bybit_spot) for sym in bybit_symbols]
-
-    logging.info(f"🔄 Starting scan of {len(all_symbols)} symbols across 3 timeframes...")
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=25) as executor:
         futures = [executor.submit(scan_symbol, *args) for args in all_symbols]
         for _ in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Scanning symbols"):
             pass
 
-    # Scan summary
-    logging.info(f"\n📈 SCAN SUMMARY:")
-    logging.info(f"  Total scans: {scan_count}")
-    logging.info(f"  Matches found: {match_count}")
-    logging.info(f"  Filtered out (price touched): {filtered_count}")
-    logging.info(f"  Final signals: {len(results)}")
-
     # Create beautiful organized messages
-    logging.info("📨 Creating Telegram report...")
     messages = create_beautiful_telegram_report(results)
 
     bot = Bot(token=TELEGRAM_TOKEN)
-    for i, msg in enumerate(messages):
+    for msg in messages:
         try:
             await bot.send_message(chat_id=int(TELEGRAM_CHAT_ID), text=msg, parse_mode='Markdown')
-            logging.info(f"✅ Telegram message {i+1}/{len(messages)} sent successfully")
+            logging.info("Telegram report sent successfully.")
         except Exception as e:
-            logging.error(f"❌ Failed to send Telegram message {i+1}: {e}")
-
-    logging.info("🏁 Scanner completed successfully")
+            logging.error(f"Failed to send Telegram message: {e}")
 
 def create_beautiful_telegram_report(results):
     """Create beautifully formatted Telegram messages organized by sentiment, timeframe, and exchange"""
     
-    logging.info(f"Creating report for {len(results)} results")
-    
     if not results:
-        logging.info("No results found - sending empty report")
-        return ["🔍 *Close=Open Level Scanner*\n\n❌ No qualifying symbols found at this time."]
+        return ["🔍 *Reversal Level Scanner*\n\n❌ No qualifying reversal patterns found at this time."]
     
     # Organize results
     bearish_results = [r for r in results if r[4] == "bearish"]
     bullish_results = [r for r in results if r[4] == "bullish"]
-    
-    logging.info(f"Report breakdown: {len(bearish_results)} bearish, {len(bullish_results)} bullish")
     
     def organize_by_timeframe_and_exchange(data):
         """Organize data by timeframe, then by exchange"""
@@ -673,31 +592,29 @@ def create_beautiful_telegram_report(results):
         
         return section + "\n"
     
-    # Build header
+    # Build header with updated description
     total_signals = len(results)
-    header = "🔍 *Close=Open Level Scanner*\n"
-    header += f"_Last two closed candles with equal close=open price_\n"
-    header += f"_Current candle hasn't touched that level yet_\n\n"
+    header = "🔍 *Reversal Level Scanner*\n"
+    header += f"_Opposite colored candles with close=open connection_\n"
+    header += f"_🟢 Bullish: RED→GREEN | 🔴 Bearish: GREEN→RED_\n"
+    header += f"_Current candle hasn't touched reversal level yet_\n\n"
     header += f"📊 *Total Signals Found: {total_signals}*\n"
     header += f"🔴 Bearish: {len(bearish_results)} | 🟢 Bullish: {len(bullish_results)}\n"
     header += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     
     # Build sections
     message = header
-    message += format_section("BEARISH SIGNALS", "🔴", bearish_results)
-    message += format_section("BULLISH SIGNALS", "🟢", bullish_results)
+    message += format_section("BEARISH REVERSAL SIGNALS", "🔴", bearish_results)
+    message += format_section("BULLISH REVERSAL SIGNALS", "🟢", bullish_results)
     
     # Add footer
     message += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-    message += "💡 _These are potential reversal or continuation zones_\n"
+    message += "💡 _These are potential reversal zones with sentiment change_\n"
     message += "⚠️ _Always do your own research before trading_"
     
     # Split into chunks if too long
     if len(message) <= 4096:
-        logging.info("Report fits in single message")
         return [message]
-    
-    logging.info("Report too long - splitting into multiple messages")
     
     # Split by major sections if needed
     messages = []
@@ -705,21 +622,20 @@ def create_beautiful_telegram_report(results):
     
     # Send bearish section
     if bearish_results:
-        bearish_msg = base_header + format_section("BEARISH SIGNALS", "🔴", bearish_results)
+        bearish_msg = base_header + format_section("BEARISH REVERSAL SIGNALS", "🔴", bearish_results)
         if len(bearish_msg) <= 4096:
             messages.append(bearish_msg.strip())
         else:
-            messages.extend(split_large_section("BEARISH SIGNALS", "🔴", bearish_results, base_header))
+            messages.extend(split_large_section("BEARISH REVERSAL SIGNALS", "🔴", bearish_results, base_header))
     
     # Send bullish section  
     if bullish_results:
-        bullish_msg = base_header + format_section("BULLISH SIGNALS", "🟢", bullish_results)
+        bullish_msg = base_header + format_section("BULLISH REVERSAL SIGNALS", "🟢", bullish_results)
         if len(bullish_msg) <= 4096:
             messages.append(bullish_msg.strip())
         else:
-            messages.extend(split_large_section("BULLISH SIGNALS", "🟢", bullish_results, base_header))
+            messages.extend(split_large_section("BULLISH REVERSAL SIGNALS", "🟢", bullish_results, base_header))
     
-    logging.info(f"Final report split into {len(messages)} messages")
     return messages
 
 def split_large_section(title, emoji, data, base_header):
@@ -771,4 +687,3 @@ def split_by_exchange(data, header):
 if __name__ == "__main__":
     import asyncio
     asyncio.run(main())
-
