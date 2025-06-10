@@ -9,6 +9,8 @@ import os
 import asyncio
 from telegram import Bot
 import random
+from tqdm import tqdm  # Import tqdm
+import re
 
 # List of symbols to ignore in all scanning
 IGNORED_SYMBOLS = {
@@ -377,7 +379,7 @@ class BybitClient:
                 if not klines:
                     raise RuntimeError(f"No kline data for {symbol} {interval} {market}")
                 df = pd.DataFrame(klines, columns=['openTime', 'open', 'high', 'low', 'close', 'volume', 'turnover'])
-                df[['open', 'close', 'high', 'low', 'volume']] = df[['open', 'close', 'high', 'low', 'volume']].astype(float)
+                df[['high', 'low', 'close', 'open', 'volume']] = df[['high', 'low', 'close', 'open', 'volume']].astype(float)
                 return df
             except RuntimeError as e:
                 if "No working proxies available" in str(e):
@@ -403,7 +405,7 @@ class BybitClient:
             time.sleep(self.retry_delay * attempt + random.uniform(0, 1))
             attempt += 1
         logging.error(f"All retries failed fetching Bybit OHLCV for {symbol} ({market}) {interval}")
-        raise RuntimeError(f"Failed to fetch Bybit OHLCV for {symbol} ({market}) {interval}")
+        raise RuntimeError(f"Failed to fetch OHLCV for {symbol} ({market}) {interval}")
 
 # --- Helper functions ---
 
@@ -494,32 +496,42 @@ async def main():
             except Exception as e:
                 logging.warning(f"Failed {exchange_name} {symbol} {market} {interval}: {e}")
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=25) as executor:
-        futures = {}
-        for sym in binance_symbols:
-            futures[executor.submit(scan_symbol, "Binance", binance_client, sym, binance_perp, binance_spot)] = sym
-        for sym in bybit_symbols:
-            futures[executor.submit(scan_symbol, "Bybit", bybit_client, sym, bybit_perp, bybit_spot)] = sym
+    all_symbols = [("Binance", binance_client, sym, binance_perp, binance_spot) for sym in binance_symbols] + \
+                  [("Bybit", bybit_client, sym, bybit_perp, bybit_spot) for sym in bybit_symbols]
 
-        for future in concurrent.futures.as_completed(futures):
-            try:
-                future.result()
-            except Exception as e:
-                logging.error(f"Error in scanning thread: {e}")
+    messages = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=25) as executor:
+        futures = [executor.submit(scan_symbol, *args) for args in all_symbols]
+        for _ in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Scanning symbols"):
+            pass  # Just iterate and tqdm does the progress
 
     if not results:
         message = "No symbols found where last two closed candles have equal close==next open price and current candle has not touched that price yet."
+        messages = [message]
     else:
-        message = "*Symbols where last two closed candles have equal close==next open price and current candle untouched that price:*\n\n"
-        for exch, sym, market, interval, candle_type in results:
-            message += f"- {exch} | {sym} | {market} | {interval} | {candle_type}\n"
+        header = "*Symbols where last two closed candles have equal close==next open price and current candle untouched that price:*\n\n"
+        lines = [
+            f"- {exch} | {sym} | {market} | {interval} | {candle_type}"
+            for exch, sym, market, interval, candle_type in results
+        ]
+        # Telegram message limit is 4096 chars
+        messages = []
+        chunk = header
+        for line in lines:
+            if len(chunk) + len(line) + 1 > 4096:
+                messages.append(chunk)
+                chunk = header
+            chunk += line + "\n"
+        if chunk.strip() != header.strip():
+            messages.append(chunk)
 
     bot = Bot(token=TELEGRAM_TOKEN)
-    try:
-        await bot.send_message(chat_id=int(TELEGRAM_CHAT_ID), text=message, parse_mode='Markdown')
-        logging.info("Telegram report sent successfully.")
-    except Exception as e:
-        logging.error(f"Failed to send Telegram message: {e}")
+    for msg in messages:
+        try:
+            await bot.send_message(chat_id=int(TELEGRAM_CHAT_ID), text=msg, parse_mode='Markdown')
+            logging.info("Telegram report sent successfully.")
+        except Exception as e:
+            logging.error(f"Failed to send Telegram message: {e}")
 
 if __name__ == "__main__":
     import asyncio
