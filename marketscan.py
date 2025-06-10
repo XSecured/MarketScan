@@ -83,6 +83,26 @@ def fetch_json(url, proxy_pool, params=None):
             time.sleep(1)
     raise RuntimeError(f"All proxies failed for {url}")
 
+# --- Proxy pre-check function ---
+
+def test_proxy(proxy):
+    proxy_url = proxy if proxy.startswith("http") else f"http://{proxy}"
+    proxies = {"http": proxy_url, "https": proxy_url}
+    try:
+        resp = requests.get("https://api.binance.com/api/v3/time", proxies=proxies, timeout=5)
+        return resp.status_code == 200
+    except:
+        return False
+
+def populate_and_test_proxies(proxy_list):
+    valid_proxies = []
+    for proxy in proxy_list:
+        if test_proxy(proxy):
+            valid_proxies.append(proxy)
+        else:
+            logging.warning(f"Proxy {proxy} failed test and will be skipped")
+    return valid_proxies
+
 # --- Fetch Binance and Bybit symbols/candles ---
 
 def fetch_binance_symbols(proxy_pool):
@@ -139,8 +159,17 @@ def main():
         logging.error("PROXY_LIST env var not set")
         exit(1)
     proxies = [p.strip() for p in proxy_list_raw.split(",") if p.strip()]
+
     proxy_pool = ProxyPool()
-    proxy_pool.populate_from_list(proxies)
+
+    # Pre-check proxies
+    valid_proxies = populate_and_test_proxies(proxies)
+    proxy_pool.populate_from_list(valid_proxies)
+
+    # Wait for at least 20 proxies
+    while len(proxy_pool.proxies) < 20:
+        logging.info(f"Waiting for at least 20 valid proxies, currently {len(proxy_pool.proxies)}")
+        time.sleep(10)
 
     TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
     TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
