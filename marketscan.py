@@ -433,14 +433,15 @@ def current_candle_touched_price(df, price):
     current_candle = df.iloc[-1]
     return current_candle['low'] <= price <= current_candle['high']
 
+# FIXED LOGIC: Swapped bullish/bearish as requested
 def get_candle_bullish_bearish(df):
     if df.empty or len(df) < 1:
         return "neutral"
     current_candle = df.iloc[-1]
     if current_candle['close'] > current_candle['open']:
-        return "bullish"
+        return "bearish"  # Changed from "bullish" to "bearish"
     elif current_candle['close'] < current_candle['open']:
-        return "bearish"
+        return "bullish"  # Changed from "bearish" to "bullish"
     else:
         return "neutral"
 
@@ -507,24 +508,72 @@ async def main():
             pass  # Just iterate and tqdm does the progress
 
     if not results:
-        message = "No symbols found where last two closed candles have equal close==next open price and current candle has not touched that price yet."
+        message = "🔍 *Price Gap Scanner*\n\nNo qualifying symbols found at this time."
         messages = [message]
     else:
-        header = "*Symbols where last two closed candles have equal close==next open price and current candle untouched that price:*\n\n"
-        lines = [
-            f"- {exch} | {sym} | {market} | {interval} | {candle_type}"
-            for exch, sym, market, interval, candle_type in results
-        ]
-        # Telegram message limit is 4096 chars
+        # Organize results by bearish/bullish sections
+        bearish_results = [r for r in results if r[4] == "bearish"]
+        bullish_results = [r for r in results if r[4] == "bullish"]
+        neutral_results = [r for r in results if r[4] == "neutral"]
+        
+        # Create organized message
+        header = "🔍 *Price Gap Scanner*\n"
+        header += "_Close=Open gaps not yet touched by current candle_\n\n"
+        
         messages = []
-        chunk = header
-        for line in lines:
-            if len(chunk) + len(line) + 1 > 4096:
-                messages.append(chunk)
-                chunk = header
-            chunk += line + "\n"
-        if chunk.strip() != header.strip():
-            messages.append(chunk)
+        
+        # Build the message with sections
+        if bearish_results or bullish_results or neutral_results:
+            message = header
+            
+            if bearish_results:
+                message += "🔴 *BEARISH SIGNALS*\n"
+                for exch, sym, market, interval, _ in bearish_results:
+                    message += f"• {exch} | {sym} | {market.upper()} | {interval}\n"
+                message += "\n"
+            
+            if bullish_results:
+                message += "🟢 *BULLISH SIGNALS*\n"
+                for exch, sym, market, interval, _ in bullish_results:
+                    message += f"• {exch} | {sym} | {market.upper()} | {interval}\n"
+                message += "\n"
+            
+            if neutral_results:
+                message += "⚪ *NEUTRAL SIGNALS*\n"
+                for exch, sym, market, interval, _ in neutral_results:
+                    message += f"• {exch} | {sym} | {market.upper()} | {interval}\n"
+                message += "\n"
+            
+            # Split into chunks if message is too long
+            if len(message) > 4096:
+                chunks = []
+                current_chunk = header
+                
+                for section_name, section_results in [
+                    ("🔴 *BEARISH SIGNALS*\n", bearish_results),
+                    ("🟢 *BULLISH SIGNALS*\n", bullish_results),
+                    ("⚪ *NEUTRAL SIGNALS*\n", neutral_results)
+                ]:
+                    if section_results:
+                        section_text = section_name
+                        for exch, sym, market, interval, _ in section_results:
+                            line = f"• {exch} | {sym} | {market.upper()} | {interval}\n"
+                            if len(current_chunk) + len(section_text) + len(line) > 4096:
+                                chunks.append(current_chunk.strip())
+                                current_chunk = header + section_text + line
+                            else:
+                                if section_text not in current_chunk:
+                                    current_chunk += section_text
+                                current_chunk += line
+                        current_chunk += "\n"
+                
+                if current_chunk.strip() != header.strip():
+                    chunks.append(current_chunk.strip())
+                messages = chunks
+            else:
+                messages = [message.strip()]
+        else:
+            messages = [header + "No qualifying symbols found at this time."]
 
     bot = Bot(token=TELEGRAM_TOKEN)
     for msg in messages:
