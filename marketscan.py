@@ -418,9 +418,11 @@ def deduplicate_symbols(perp_list, spot_list):
 def floats_are_equal(a, b, tol=1e-8):
     return abs(a - b) < tol
 
-def check_equal_price_and_classify(df):
+def check_equal_price_and_classify(df, symbol=None, interval=None):
     """Check if last two CLOSED candles have equal close=open, classify by last closed candle color"""
     if df.empty or len(df) < 3:
+        if symbol:
+            logging.warning(f"Insufficient data for {symbol} {interval}: {len(df)} candles")
         return None, None
     
     # Simple: last two CLOSED candles
@@ -428,29 +430,76 @@ def check_equal_price_and_classify(df):
     last_closed = df.iloc[1]         # Newer closed candle
     # df.iloc[2] = current live candle (ignore)
     
+    # Extract values for logging
+    second_last_close = float(second_last_closed['close'])
+    last_open = float(last_closed['open'])
+    last_close = float(last_closed['close'])
+    last_open_candle = float(last_closed['open'])
+    
+    # Special debug logging for problematic symbols
+    if symbol and symbol in ["AAVEUSDT", "PEPEUSDT", "1000PEPEUSDT", "GNOUSDT"] and interval == "1M":
+        logging.info(f"\n=== DEBUG {symbol} {interval} ===")
+        logging.info(f"DataFrame shape: {df.shape}")
+        logging.info(f"Candle 0 (older): open={second_last_closed['open']:.12f}, close={second_last_close:.12f}")
+        logging.info(f"Candle 1 (newer): open={last_open:.12f}, close={last_close:.12f}")
+        logging.info(f"Candle 2 (current): open={df.iloc[2]['open']:.12f}, close={df.iloc[2]['close']:.12f}")
+        logging.info(f"Checking condition: {second_last_close:.12f} == {last_open:.12f}")
+        logging.info(f"Absolute difference: {abs(second_last_close - last_open):.15f}")
+        logging.info(f"Tolerance threshold: 1e-10 = {1e-10:.15f}")
+    
     # Check if second_last_closed['close'] == last_closed['open']
-    if floats_are_equal(float(second_last_closed['close']), float(last_closed['open'])):
-        equal_price = float(second_last_closed['close'])
+    if floats_are_equal(second_last_close, last_open):
+        equal_price = second_last_close
+        
+        # Log the match found
+        logging.info(f"🎯 MATCH FOUND: {symbol or 'Unknown'} {interval or 'Unknown'} - Equal price: {equal_price:.12f}")
         
         # Classify based on last closed candle color
-        if float(last_closed['close']) > float(last_closed['open']):
+        if last_close > last_open_candle:
+            logging.info(f"  → Classified as BULLISH (close {last_close:.8f} > open {last_open_candle:.8f})")
             return equal_price, "bullish"
-        elif float(last_closed['close']) < float(last_closed['open']):
+        elif last_close < last_open_candle:
+            logging.info(f"  → Classified as BEARISH (close {last_close:.8f} < open {last_open_candle:.8f})")
             return equal_price, "bearish"
+        else:
+            logging.info(f"  → Classified as DOJI (close {last_close:.8f} == open {last_open_candle:.8f}) - FILTERED OUT")
+    else:
+        # Log when no match is found for debug symbols
+        if symbol and symbol in ["AAVEUSDT", "PEPEUSDT", "1000PEPEUSDT", "GNOUSDT"] and interval == "1M":
+            logging.info(f"❌ NO MATCH: {symbol} {interval} - Difference too large")
     
     return None, None
 
-def current_candle_touched_price(df, price):
+def current_candle_touched_price(df, price, symbol=None, interval=None):
     if df.empty or len(df) < 3:
         return False
+    
     # Current live candle is df.iloc[2]
     current_candle = df.iloc[2]
-    return float(current_candle['low']) <= price <= float(current_candle['high'])
+    current_low = float(current_candle['low'])
+    current_high = float(current_candle['high'])
+    
+    touched = current_low <= price <= current_high
+    
+    if symbol and symbol in ["AAVEUSDT", "PEPEUSDT", "1000PEPEUSDT", "GNOUSDT"]:
+        logging.info(f"Current candle touch check for {symbol}: price={price:.8f}, low={current_low:.8f}, high={current_high:.8f}, touched={touched}")
+    
+    return touched
     
 # --- Main async scanning and reporting ---
 
 async def main():
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+    # Enhanced logging configuration
+    logging.basicConfig(
+        level=logging.INFO, 
+        format='%(asctime)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
+        handlers=[
+            logging.StreamHandler(),  # Console output
+            logging.FileHandler('scanner_debug.log', mode='w')  # File output
+        ]
+    )
+    
+    logging.info("🚀 Starting Close=Open Level Scanner")
 
     proxy_url = os.getenv("PROXY_LIST_URL")
     if not proxy_url:
@@ -471,6 +520,7 @@ async def main():
     binance_client = BinanceClient(proxy_pool)
     bybit_client = BybitClient(proxy_pool)
 
+    logging.info("📊 Fetching exchange symbols...")
     binance_perp = set(binance_client.get_perp_symbols())
     binance_spot = set(binance_client.get_spot_symbols())
 
@@ -485,49 +535,100 @@ async def main():
 
     results = []
     lock = threading.Lock()
+    scan_count = 0
+    match_count = 0
+    filtered_count = 0
 
     def scan_symbol(exchange_name, client, symbol, perp_set, spot_set):
+        nonlocal scan_count, match_count, filtered_count
+        
         market = "perp" if symbol in perp_set else "spot"
         for interval in ["1M", "1w", "1d"]:
             try:
-                df = client.fetch_ohlcv(symbol, interval, limit=3, market=market)  # Back to 3!
-                equal_price, signal_type = check_equal_price_and_classify(df)
+                with lock:
+                    scan_count += 1
+                
+                # Special logging for debug symbols
+                is_debug_symbol = symbol in ["AAVEUSDT", "PEPEUSDT", "1000PEPEUSDT", "GNOUSDT"]
+                
+                if is_debug_symbol:
+                    logging.info(f"\n🔍 SCANNING DEBUG SYMBOL: {exchange_name} {symbol} {market} {interval}")
+                
+                df = client.fetch_ohlcv(symbol, interval, limit=3, market=market)
+                
+                if is_debug_symbol and interval == "1M":
+                    logging.info(f"Raw data for {symbol}:")
+                    for i, row in df.iterrows():
+                        logging.info(f"  Row {i}: O={row['open']:.12f} H={row['high']:.12f} L={row['low']:.12f} C={row['close']:.12f}")
+                
+                equal_price, signal_type = check_equal_price_and_classify(df, symbol, interval)
             
                 if equal_price is not None and signal_type is not None:
-                    if not current_candle_touched_price(df, equal_price):
+                    with lock:
+                        match_count += 1
+                    
+                    touched = current_candle_touched_price(df, equal_price, symbol, interval)
+                    
+                    if not touched:
+                        logging.info(f"✅ SIGNAL ADDED: {exchange_name} {symbol} {market} {interval} {signal_type.upper()} @ {equal_price:.8f}")
                         with lock:
                             results.append((exchange_name, symbol, market, interval, signal_type))
+                    else:
+                        with lock:
+                            filtered_count += 1
+                        logging.info(f"🚫 SIGNAL FILTERED (price touched): {exchange_name} {symbol} {market} {interval} {signal_type.upper()} @ {equal_price:.8f}")
+                        
+                elif is_debug_symbol and interval == "1M":
+                    logging.info(f"❌ NO SIGNAL: {exchange_name} {symbol} {market} {interval}")
+                    
             except Exception as e:
-                logging.warning(f"Failed {exchange_name} {symbol} {market} {interval}: {e}")
+                logging.error(f"❌ SCAN FAILED: {exchange_name} {symbol} {market} {interval}: {e}")
 
     all_symbols = [("Binance", binance_client, sym, binance_perp, binance_spot) for sym in binance_symbols] + \
                   [("Bybit", bybit_client, sym, bybit_perp, bybit_spot) for sym in bybit_symbols]
+
+    logging.info(f"🔄 Starting scan of {len(all_symbols)} symbols across 3 timeframes...")
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=25) as executor:
         futures = [executor.submit(scan_symbol, *args) for args in all_symbols]
         for _ in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Scanning symbols"):
             pass
 
+    # Scan summary
+    logging.info(f"\n📈 SCAN SUMMARY:")
+    logging.info(f"  Total scans: {scan_count}")
+    logging.info(f"  Matches found: {match_count}")
+    logging.info(f"  Filtered out (price touched): {filtered_count}")
+    logging.info(f"  Final signals: {len(results)}")
+
     # Create beautiful organized messages
+    logging.info("📨 Creating Telegram report...")
     messages = create_beautiful_telegram_report(results)
 
     bot = Bot(token=TELEGRAM_TOKEN)
-    for msg in messages:
+    for i, msg in enumerate(messages):
         try:
             await bot.send_message(chat_id=int(TELEGRAM_CHAT_ID), text=msg, parse_mode='Markdown')
-            logging.info("Telegram report sent successfully.")
+            logging.info(f"✅ Telegram message {i+1}/{len(messages)} sent successfully")
         except Exception as e:
-            logging.error(f"Failed to send Telegram message: {e}")
+            logging.error(f"❌ Failed to send Telegram message {i+1}: {e}")
+
+    logging.info("🏁 Scanner completed successfully")
 
 def create_beautiful_telegram_report(results):
     """Create beautifully formatted Telegram messages organized by sentiment, timeframe, and exchange"""
     
+    logging.info(f"Creating report for {len(results)} results")
+    
     if not results:
+        logging.info("No results found - sending empty report")
         return ["🔍 *Close=Open Level Scanner*\n\n❌ No qualifying symbols found at this time."]
     
     # Organize results
     bearish_results = [r for r in results if r[4] == "bearish"]
     bullish_results = [r for r in results if r[4] == "bullish"]
+    
+    logging.info(f"Report breakdown: {len(bearish_results)} bearish, {len(bullish_results)} bullish")
     
     def organize_by_timeframe_and_exchange(data):
         """Organize data by timeframe, then by exchange"""
@@ -593,7 +694,10 @@ def create_beautiful_telegram_report(results):
     
     # Split into chunks if too long
     if len(message) <= 4096:
+        logging.info("Report fits in single message")
         return [message]
+    
+    logging.info("Report too long - splitting into multiple messages")
     
     # Split by major sections if needed
     messages = []
@@ -605,7 +709,6 @@ def create_beautiful_telegram_report(results):
         if len(bearish_msg) <= 4096:
             messages.append(bearish_msg.strip())
         else:
-            # Further split bearish by timeframe if needed
             messages.extend(split_large_section("BEARISH SIGNALS", "🔴", bearish_results, base_header))
     
     # Send bullish section  
@@ -614,9 +717,9 @@ def create_beautiful_telegram_report(results):
         if len(bullish_msg) <= 4096:
             messages.append(bullish_msg.strip())
         else:
-            # Further split bullish by timeframe if needed
             messages.extend(split_large_section("BULLISH SIGNALS", "🟢", bullish_results, base_header))
     
+    logging.info(f"Final report split into {len(messages)} messages")
     return messages
 
 def split_large_section(title, emoji, data, base_header):
@@ -640,7 +743,6 @@ def split_large_section(title, emoji, data, base_header):
         if len(timeframe_msg) <= 4096:
             messages.append(timeframe_msg.strip())
         else:
-            # If still too long, split by exchange
             messages.extend(split_by_exchange(organized[timeframe], timeframe_header))
     
     return messages
@@ -669,3 +771,4 @@ def split_by_exchange(data, header):
 if __name__ == "__main__":
     import asyncio
     asyncio.run(main())
+
