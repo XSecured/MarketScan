@@ -47,15 +47,27 @@ def test_proxy(proxy: str, timeout=5) -> bool:
 
 def test_proxies_concurrently(proxies: list, max_workers: int = 50, max_working: int = 20) -> list:
     working = []
+    tested = 0
+    dead = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(test_proxy, proxy): proxy for proxy in proxies}
-        for future in concurrent.futures.as_completed(futures):
-            proxy = futures[future]
-            if future.result():
-                working.append(proxy)
-                if len(working) >= max_working:
-                    break
-    logging.info(f"Found {len(working)} working proxies")
+        try:
+            for future in concurrent.futures.as_completed(futures):
+                tested += 1
+                proxy = futures[future]
+                if future.result():
+                    working.append(proxy)
+                    if len(working) % 5 == 0:
+                        logging.info(f"Proxy check: Tested {tested} | Working: {len(working)} | Dead: {tested - len(working)}")
+                    if len(working) >= max_working:
+                        break
+                else:
+                    dead += 1
+        finally:
+            if len(working) >= max_working:
+                for f in futures:
+                    f.cancel()
+    logging.info(f"Found {len(working)} working proxies (tested {tested})")
     return working[:max_working]
 
 class ProxyPool:
@@ -326,7 +338,6 @@ class BybitClient:
         return []
 
     def fetch_ohlcv(self, symbol, interval, limit=100, market="spot"):
-        # Bybit interval mapping
         interval_map = {
             "1M": "1M",
             "1w": "1W",
@@ -400,9 +411,8 @@ async def main():
 
     TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
     TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-    TELEGRAM_CHANNEL_USERNAME = os.getenv("TELEGRAM_CHANNEL_USERNAME")
 
-    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID or not TELEGRAM_CHANNEL_USERNAME:
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
         logging.error("Telegram environment variables not fully set")
         return
 
@@ -461,7 +471,6 @@ async def main():
     bot = Bot(token=TELEGRAM_TOKEN)
     try:
         await bot.send_message(chat_id=int(TELEGRAM_CHAT_ID), text=message, parse_mode='Markdown')
-        await bot.send_message(chat_id=TELEGRAM_CHANNEL_USERNAME, text=message, parse_mode='Markdown')
         logging.info("Telegram report sent successfully.")
     except Exception as e:
         logging.error(f"Failed to send Telegram message: {e}")
