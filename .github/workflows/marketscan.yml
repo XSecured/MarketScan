@@ -24,7 +24,7 @@ jobs:
 
     - name: Run marketscan.py
       env:
-        PROXY_LIST_URL: ${{ secrets.PROXY_LIST_URL }}
+        PROXY_LIST: ${{ secrets.PROXY_LIST }}
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         TELEGRAM_CHANNEL_USERNAME: ${{ secrets.TELEGRAM_CHANNEL_USERNAME }}
