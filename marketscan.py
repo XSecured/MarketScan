@@ -353,7 +353,7 @@ class BybitClient:
         for attempt in range(1, self.max_retries + 1):
             try:
                 proxies = self._get_proxy_dict()
-                resp = requests.get(url, proxies=proxies, timeout=10)
+                resp = requests.get(url, params=params, proxies=proxies, timeout=10)
                 resp.raise_for_status()
                 data = resp.json()
                 symbols = [
