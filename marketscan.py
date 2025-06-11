@@ -443,7 +443,7 @@ def check_equal_price_and_classify(df):
     last_is_green = last_close > last_open
     last_is_red = last_close < last_open
     
-    # Check if second_last_closed['close'] == last_closed['open']
+    # Checkclosed['close'] == last_closed['open']
     if floats_are_equal(second_last_close, last_open):
         equal_price = second_last_close
         
@@ -466,6 +466,96 @@ def current_candle_touched_price(df, price):
     # Current candle is df.iloc[0] (newest/live)
     current_candle = df.iloc[0]
     return float(current_candle['low']) <= price <= float(current_candle['high'])
+
+# MOVED OUTSIDE: Helper functions for telegram formatting
+def organize_by_timeframe_and_exchange(data):
+    """Organize data by timeframe, then by exchange"""
+    organized = {}
+    for exchange, symbol, market, interval, _ in data:
+        if interval not in organized:
+            organized[interval] = {}
+        if exchange not in organized[interval]:
+            organized[interval][exchange] = []
+        organized[interval][exchange].append((symbol, market))
+    return organized
+
+def format_section(title, emoji, data):
+    """Format a section with proper hierarchy"""
+    if not data:
+        return ""
+    
+    section = f"{emoji} *{title}*\n"
+    organized = organize_by_timeframe_and_exchange(data)
+    
+    # Sort timeframes: 1M, 1w, 1d
+    timeframe_order = ["1M", "1w", "1d"]
+    for timeframe in timeframe_order:
+        if timeframe not in organized:
+            continue
+            
+        section += f"\n📅 *{timeframe} Timeframe*\n"
+        
+        # Sort exchanges alphabetically
+        for exchange in sorted(organized[timeframe].keys()):
+            symbols = organized[timeframe][exchange]
+            section += f"  🏢 _{exchange}_:\n"
+            
+            # Group by market type and sort symbols
+            spot_symbols = sorted([s[0] for s in symbols if s[1] == "spot"])
+            perp_symbols = sorted([s[0] for s in symbols if s[1] == "perp"])
+            
+            if spot_symbols:
+                section += f"    💰 SPOT: {', '.join(spot_symbols)}\n"
+            if perp_symbols:
+                section += f"    ⚡ PERP: {', '.join(perp_symbols)}\n"
+    
+    return section + "\n"
+
+def split_large_section(title, emoji, data, base_header):
+    """Split large sections by timeframe"""
+    messages = []
+    organized = {}
+    
+    for exchange, symbol, market, interval, _ in data:
+        if interval not in organized:
+            organized[interval] = []
+        organized[interval].append((exchange, symbol, market, interval, _))
+    
+    timeframe_order = ["1M", "1w", "1d"]
+    for timeframe in timeframe_order:
+        if timeframe not in organized:
+            continue
+        
+        timeframe_header = base_header + f"{emoji} *{title} - {timeframe}*\n\n"
+        timeframe_msg = timeframe_header + format_section("", "", organized[timeframe])
+        
+        if len(timeframe_msg) <= 4096:
+            messages.append(timeframe_msg.strip())
+        else:
+            messages.extend(split_by_exchange(organized[timeframe], timeframe_header))
+    
+    return messages
+
+def split_by_exchange(data, header):
+    """Split by exchange if needed"""
+    messages = []
+    exchanges = {}
+    
+    for exchange, symbol, market, interval, signal_type in data:
+        if exchange not in exchanges:
+            exchanges[exchange] = []
+        exchanges[exchange].append((exchange, symbol, market, interval, signal_type))
+    
+    for exchange in sorted(exchanges.keys()):
+        exchange_msg = header + f"🏢 _{exchange}_\n\n"
+        exchange_data = exchanges[exchange]
+        
+        for _, symbol, market, _, _ in exchange_data:
+            exchange_msg += f"• {symbol} ({market.upper()})\n"
+        
+        messages.append(exchange_msg.strip())
+    
+    return messages
     
 # --- Main async scanning and reporting ---
 
@@ -549,49 +639,6 @@ def create_beautiful_telegram_report(results):
     bearish_results = [r for r in results if r[4] == "bearish"]
     bullish_results = [r for r in results if r[4] == "bullish"]
     
-    def organize_by_timeframe_and_exchange(data):
-        """Organize data by timeframe, then by exchange"""
-        organized = {}
-        for exchange, symbol, market, interval, _ in data:
-            if interval not in organized:
-                organized[interval] = {}
-            if exchange not in organized[interval]:
-                organized[interval][exchange] = []
-            organized[interval][exchange].append((symbol, market))
-        return organized
-    
-    def format_section(title, emoji, data):
-        """Format a section with proper hierarchy"""
-        if not data:
-            return ""
-        
-        section = f"{emoji} *{title}*\n"
-        organized = organize_by_timeframe_and_exchange(data)
-        
-        # Sort timeframes: 1M, 1w, 1d
-        timeframe_order = ["1M", "1w", "1d"]
-        for timeframe in timeframe_order:
-            if timeframe not in organized:
-                continue
-                
-            section += f"\n📅 *{timeframe} Timeframe*\n"
-            
-            # Sort exchanges alphabetically
-            for exchange in sorted(organized[timeframe].keys()):
-                symbols = organized[timeframe][exchange]
-                section += f"  🏢 _{exchange}_:\n"
-                
-                # Group by market type and sort symbols
-                spot_symbols = sorted([s[0] for s in symbols if s[1] == "spot"])
-                perp_symbols = sorted([s[0] for s in symbols if s[1] == "perp"])
-                
-                if spot_symbols:
-                    section += f"    💰 SPOT: {', '.join(spot_symbols)}\n"
-                if perp_symbols:
-                    section += f"    ⚡ PERP: {', '.join(perp_symbols)}\n"
-        
-        return section + "\n"
-    
     # Build header with updated description
     total_signals = len(results)
     header = "🔍 *Reversal Level Scanner*\n"
@@ -635,52 +682,6 @@ def create_beautiful_telegram_report(results):
             messages.append(bullish_msg.strip())
         else:
             messages.extend(split_large_section("BULLISH REVERSAL SIGNALS", "🟢", bullish_results, base_header))
-    
-    return messages
-
-def split_large_section(title, emoji, data, base_header):
-    """Split large sections by timeframe"""
-    messages = []
-    organized = {}
-    
-    for exchange, symbol, market, interval, _ in data:
-        if interval not in organized:
-            organized[interval] = []
-        organized[interval].append((exchange, symbol, market, interval, _))
-    
-    timeframe_order = ["1M", "1w", "1d"]
-    for timeframe in timeframe_order:
-        if timeframe not in organized:
-            continue
-        
-        timeframe_header = base_header + f"{emoji} *{title} - {timeframe}*\n\n"
-        timeframe_msg = timeframe_header + format_section("", "", organized[timeframe])
-        
-        if len(timeframe_msg) <= 4096:
-            messages.append(timeframe_msg.strip())
-        else:
-            messages.extend(split_by_exchange(organized[timeframe], timeframe_header))
-    
-    return messages
-
-def split_by_exchange(data, header):
-    """Split by exchange if needed"""
-    messages = []
-    exchanges = {}
-    
-    for exchange, symbol, market, interval, signal_type in data:
-        if exchange not in exchanges:
-            exchanges[exchange] = []
-        exchanges[exchange].append((exchange, symbol, market, interval, signal_type))
-    
-    for exchange in sorted(exchanges.keys()):
-        exchange_msg = header + f"🏢 _{exchange}_\n\n"
-        exchange_data = exchanges[exchange]
-        
-        for _, symbol, market, _, _ in exchange_data:
-            exchange_msg += f"• {symbol} ({market.upper()})\n"
-        
-        messages.append(exchange_msg.strip())
     
     return messages
 
