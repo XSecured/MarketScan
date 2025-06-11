@@ -11,8 +11,7 @@ from telegram import Bot
 import random
 from tqdm import tqdm
 import re
-import pytz
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 # List of symbols to ignore in all scanning
 IGNORED_SYMBOLS = {
@@ -559,9 +558,9 @@ def create_beautiful_telegram_report(results):
     bybit_bearish = len([r for r in bybit_results if r[4] == "bearish"])
     
     # Get current time in UTC+3
-    utc_now = datetime.utcnow()
-    utc_plus_3 = pytz.timezone('Etc/GMT-3')
-    current_time = utc_now.replace(tzinfo=pytz.utc).astimezone(utc_plus_3)
+    utc_now = datetime.now(timezone.utc)
+    utc_plus_3 = timezone(timedelta(hours=3))
+    current_time = utc_now.astimezone(utc_plus_3)
     timestamp = current_time.strftime("%Y-%m-%d %H:%M:%S UTC+3")
     
     message = "💥 *Reversal Level Scanner*\n\n"
