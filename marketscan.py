@@ -541,12 +541,12 @@ async def main():
             logging.error(f"Failed to send Telegram message: {e}")
 
 def create_beautiful_telegram_report(results):
-    """Create clean telegram report organized by timeframe, then exchange"""
+    """Create clean telegram report with bullet points, minimal parts"""
     
     if not results:
         return ["💥 *Reversal Level Scanner*\n\n❌ No qualifying reversal patterns found at this time."]
     
-    # Organize by timeframe first, then by exchange and signal type
+    # Organize by timeframe first
     timeframes = {}
     for exchange, symbol, market, interval, signal_type in results:
         if interval not in timeframes:
@@ -564,15 +564,12 @@ def create_beautiful_telegram_report(results):
     total_signals = len(results)
     binance_count = len([r for r in results if r[0] == "Binance"])
     bybit_count = len([r for r in results if r[0] == "Bybit"])
-    bullish_count = len([r for r in results if r[4] == "bullish"])
-    bearish_count = len([r for r in results if r[4] == "bearish"])
     
     messages = []
     
     # Summary message
     summary = "💥 *Reversal Level Scanner*\n\n"
-    summary += f"✅ Total Signals: {total_signals}\n"
-    summary += f"🍏 Bullish: {bullish_count} | 🔻 Bearish: {bearish_count}\n\n"
+    summary += f"✅ Total Signals: {total_signals}\n\n"
     summary += f"*Binance*: {binance_count} | *Bybit*: {bybit_count}\n\n"
     summary += f"🕒 {timestamp}"
     messages.append(summary)
@@ -584,17 +581,13 @@ def create_beautiful_telegram_report(results):
             continue
             
         tf_data = timeframes[timeframe]
-        
-        # Count signals for this timeframe
         tf_total = sum(len(tf_data[ex][st]) for ex in tf_data for st in tf_data[ex])
+        
         if tf_total == 0:
             continue
         
-        # Create timeframe message header
-        tf_header = f"📅 *{timeframe} Timeframe* ({tf_total} signals)\n\n"
-        
-        # Collect all symbols for this timeframe
-        tf_content = ""
+        # Start building timeframe message
+        current_msg = f"📅 *{timeframe} Timeframe* ({tf_total} signals)\n\n"
         
         # Process each exchange
         for exchange in ["Binance", "Bybit"]:
@@ -604,74 +597,47 @@ def create_beautiful_telegram_report(results):
             if not exchange_bullish and not exchange_bearish:
                 continue
                 
-            tf_content += f"*{exchange}*:\n"
+            current_msg += f"*{exchange}*:\n"
             
+            # Add bullish symbols
             if exchange_bullish:
-                tf_content += f"🍏 Bullish ({len(exchange_bullish)})\n"
-                # Split into chunks if too many
-                if len(exchange_bullish) > 20:
-                    chunks = split_symbol_list(exchange_bullish, 20)
-                    for i, chunk in enumerate(chunks):
-                        tf_content += f"Part {i+1}: {', '.join(chunk)}\n"
-                else:
-                    tf_content += f"{', '.join(exchange_bullish)}\n"
-                tf_content += "\n"
+                section_start = f"🍏 *Bullish ({len(exchange_bullish)})*\n"
+                
+                # Check if we need to split
+                estimated_length = len(current_msg) + len(section_start) + (len(exchange_bullish) * 15)  # ~15 chars per symbol line
+                
+                if estimated_length > 3500:
+                    # Start new message for this section
+                    messages.append(current_msg.strip())
+                    current_msg = f"📅 *{timeframe} - {exchange} Bullish*\n\n"
+                
+                current_msg += section_start
+                for symbol in exchange_bullish:
+                    current_msg += f"• {symbol}\n"
+                current_msg += "\n"
             
+            # Add bearish symbols
             if exchange_bearish:
-                tf_content += f"🔻 Bearish ({len(exchange_bearish)})\n"
-                # Split into chunks if too many  
-                if len(exchange_bearish) > 20:
-                    chunks = split_symbol_list(exchange_bearish, 20)
-                    for i, chunk in enumerate(chunks):
-                        tf_content += f"Part {i+1}: {', '.join(chunk)}\n"
-                else:
-                    tf_content += f"{', '.join(exchange_bearish)}\n"
-                tf_content += "\n"
+                section_start = f"🔻 *Bearish ({len(exchange_bearish)})*\n"
+                
+                # Check if we need to split
+                estimated_length = len(current_msg) + len(section_start) + (len(exchange_bearish) * 15)
+                
+                if estimated_length > 3500:
+                    # Start new message for this section
+                    messages.append(current_msg.strip())
+                    current_msg = f"📅 *{timeframe} - {exchange} Bearish*\n\n"
+                
+                current_msg += section_start
+                for symbol in exchange_bearish:
+                    current_msg += f"• {symbol}\n"
+                current_msg += "\n"
             
-            tf_content += "——————————————————\n\n"
+            current_msg += "——————————————————\n\n"
         
-        # Combine header and content
-        tf_message = tf_header + tf_content
-        
-        # Check if message is too long
-        if len(tf_message) > 3500:
-            # Split by exchange if needed
-            messages.extend(split_timeframe_message(timeframe, tf_data))
-        else:
-            messages.append(tf_message.strip())
-    
-    return messages
-
-def split_symbol_list(symbols, chunk_size):
-    """Split symbol list into smaller chunks"""
-    return [symbols[i:i + chunk_size] for i in range(0, len(symbols), chunk_size)]
-
-def split_timeframe_message(timeframe, tf_data):
-    """Split timeframe message by exchange if too long"""
-    messages = []
-    
-    for exchange in ["Binance", "Bybit"]:
-        exchange_bullish = sorted(tf_data[exchange]["bullish"])
-        exchange_bearish = sorted(tf_data[exchange]["bearish"])
-        
-        if not exchange_bullish and not exchange_bearish:
-            continue
-            
-        msg = f"📅 *{timeframe} - {exchange}*\n\n"
-        
-        if exchange_bullish:
-            msg += f"🍏 *Bullish ({len(exchange_bullish)})*\n"
-            for symbol in exchange_bullish:
-                msg += f"• {symbol}\n"
-            msg += "\n"
-        
-        if exchange_bearish:
-            msg += f"🔻 *Bearish ({len(exchange_bearish)})*\n"
-            for symbol in exchange_bearish:
-                msg += f"• {symbol}\n"
-            msg += "\n"
-        
-        messages.append(msg.strip())
+        # Add the completed timeframe message
+        if current_msg.strip():
+            messages.append(current_msg.strip())
     
     return messages
 
