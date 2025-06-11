@@ -541,12 +541,12 @@ async def main():
             logging.error(f"Failed to send Telegram message: {e}")
 
 def create_beautiful_telegram_report(results):
-    """Create clean, concise telegram report organized by exchange first"""
+    """Create clean telegram report with proper message splitting"""
     
     if not results:
-        return ["🔍 *Reversal Level Scanner*\n\n❌ No qualifying reversal patterns found at this time."]
+        return ["💥 *Reversal Level Scanner*\n\n❌ No qualifying reversal patterns found at this time."]
     
-    # Organize by exchange first, then by signal type
+    # Organize by exchange first
     binance_results = [r for r in results if r[0] == "Binance"]
     bybit_results = [r for r in results if r[0] == "Bybit"]
     
@@ -557,116 +557,80 @@ def create_beautiful_telegram_report(results):
     bybit_bullish = len([r for r in bybit_results if r[4] == "bullish"])
     bybit_bearish = len([r for r in bybit_results if r[4] == "bearish"])
     
-    # Get current time in UTC+3
+    # Get timestamp
     utc_now = datetime.now(timezone.utc)
     utc_plus_3 = timezone(timedelta(hours=3))
     current_time = utc_now.astimezone(utc_plus_3)
     timestamp = current_time.strftime("%Y-%m-%d %H:%M:%S UTC+3")
     
-    message = "💥 *Reversal Level Scanner*\n\n"
-    message += f"✅ Total Signals: {total_signals}\n\n"
-    
-    # Binance section
-    if binance_results:
-        message += f"*Binance Signals: {len(binance_results)} (Bullish: {binance_bullish}, Bearish: {binance_bearish})*\n\n"
-        
-        # Binance bullish
-        binance_bullish_symbols = [f"{r[1]}" for r in binance_results if r[4] == "bullish"]
-        if binance_bullish_symbols:
-            message += "🍏*Bullish Signals*\n"
-            for symbol in sorted(binance_bullish_symbols):
-                message += f"• {symbol}\n"
-            message += "\n"
-        
-        # Binance bearish  
-        binance_bearish_symbols = [f"{r[1]}" for r in binance_results if r[4] == "bearish"]
-        if binance_bearish_symbols:
-            message += "🔻*Bearish Signals*\n"
-            for symbol in sorted(binance_bearish_symbols):
-                message += f"• {symbol}\n"
-            message += "\n"
-        
-        message += "——————–—-———————\n\n"
-    
-    # Bybit section
-    if bybit_results:
-        message += f"*Bybit Signals: {len(bybit_results)} (Bullish: {bybit_bullish}, Bearish: {bybit_bearish})*\n\n"
-        
-        # Bybit bullish
-        bybit_bullish_symbols = [f"{r[1]}" for r in bybit_results if r[4] == "bullish"]
-        if bybit_bullish_symbols:
-            message += "🍏*Bullish Signals*\n"
-            for symbol in sorted(bybit_bullish_symbols):
-                message += f"• {symbol}\n"
-            message += "\n"
-        
-        # Bybit bearish
-        bybit_bearish_symbols = [f"{r[1]}" for r in bybit_results if r[4] == "bearish"]
-        if bybit_bearish_symbols:
-            message += "🔻*Bearish Signals*\n"
-            for symbol in sorted(bybit_bearish_symbols):
-                message += f"• {symbol}\n"
-            message += "\n"
-    
-    # Add timestamp
-    message += f"🕒 Updated: {timestamp}"
-    
-    # Split into chunks if too long
-    if len(message) <= 4096:
-        return [message]
-    
-    # If too long, split by exchange
     messages = []
     
-    # Header message
-    header = "💥 *Reversal Level Scanner*\n\n"
-    header += f"✅ Total Signals: {total_signals}\n\n"
+    # Summary message first
+    summary = "💥 *Reversal Level Scanner*\n\n"
+    summary += f"✅ Total Signals: {total_signals}\n\n"
+    summary += f"*Binance*: {len(binance_results)} (🍏{binance_bullish} 🔻{binance_bearish})\n"
+    summary += f"*Bybit*: {len(bybit_results)} (🍏{bybit_bullish} 🔻{bybit_bearish})\n\n"
+    summary += f"🕒 {timestamp}"
+    messages.append(summary)
     
-    # Binance message
+    # Split Binance signals into smaller chunks
     if binance_results:
-        binance_msg = header
-        binance_msg += f"*Binance Signals: {len(binance_results)} (Bullish: {binance_bullish}, Bearish: {binance_bearish})*\n\n"
+        binance_bullish_symbols = sorted([r[1] for r in binance_results if r[4] == "bullish"])
+        binance_bearish_symbols = sorted([r[1] for r in binance_results if r[4] == "bearish"])
         
-        binance_bullish_symbols = [f"{r[1]}" for r in binance_results if r[4] == "bullish"]
+        # Split bullish signals into chunks
         if binance_bullish_symbols:
-            binance_msg += "🍏*Bullish Signals*\n"
-            for symbol in sorted(binance_bullish_symbols):
-                binance_msg += f"• {symbol}\n"
-            binance_msg += "\n"
+            chunks = split_symbols_into_chunks(binance_bullish_symbols, "🍏*Binance Bullish*", max_symbols=50)
+            messages.extend(chunks)
         
-        binance_bearish_symbols = [f"{r[1]}" for r in binance_results if r[4] == "bearish"]
+        # Split bearish signals into chunks  
         if binance_bearish_symbols:
-            binance_msg += "🔻*Bearish Signals*\n"
-            for symbol in sorted(binance_bearish_symbols):
-                binance_msg += f"• {symbol}\n"
-            binance_msg += "\n"
-        
-        binance_msg += f"🕒 Updated: {timestamp}"
-        messages.append(binance_msg)
+            chunks = split_symbols_into_chunks(binance_bearish_symbols, "🔻*Binance Bearish*", max_symbols=50)
+            messages.extend(chunks)
     
-    # Bybit message
+    # Split Bybit signals into smaller chunks
     if bybit_results:
-        bybit_msg = header
-        bybit_msg += f"*Bybit Signals: {len(bybit_results)} (Bullish: {bybit_bullish}, Bearish: {bybit_bearish})*\n\n"
+        bybit_bullish_symbols = sorted([r[1] for r in bybit_results if r[4] == "bullish"])
+        bybit_bearish_symbols = sorted([r[1] for r in bybit_results if r[4] == "bearish"])
         
-        bybit_bullish_symbols = [f"{r[1]}" for r in bybit_results if r[4] == "bullish"]
+        # Split bullish signals into chunks
         if bybit_bullish_symbols:
-            bybit_msg += "🍏*Bullish Signals*\n"
-            for symbol in sorted(bybit_bullish_symbols):
-                bybit_msg += f"• {symbol}\n"
-            bybit_msg += "\n"
+            chunks = split_symbols_into_chunks(bybit_bullish_symbols, "🍏*Bybit Bullish*", max_symbols=50)
+            messages.extend(chunks)
         
-        bybit_bearish_symbols = [f"{r[1]}" for r in bybit_results if r[4] == "bearish"]
+        # Split bearish signals into chunks
         if bybit_bearish_symbols:
-            bybit_msg += "🔻*Bearish Signals*\n"
-            for symbol in sorted(bybit_bearish_symbols):
-                bybit_msg += f"• {symbol}\n"
-            bybit_msg += "\n"
-        
-        bybit_msg += f"🕒 Updated: {timestamp}"
-        messages.append(bybit_msg)
+            chunks = split_symbols_into_chunks(bybit_bearish_symbols, "🔻*Bybit Bearish*", max_symbols=50)
+            messages.extend(chunks)
     
     return messages
+
+def split_symbols_into_chunks(symbols, header, max_symbols=50):
+    """Split symbol list into chunks to stay under Telegram limits"""
+    chunks = []
+    
+    # Split symbols into smaller groups
+    for i in range(0, len(symbols), max_symbols):
+        chunk_symbols = symbols[i:i + max_symbols]
+        
+        # Build message for this chunk
+        chunk_msg = f"{header}\n"
+        if len(symbols) > max_symbols:
+            chunk_msg += f"*Part {(i // max_symbols) + 1}*\n"
+        chunk_msg += "\n"
+        
+        for symbol in chunk_symbols:
+            chunk_msg += f"• {symbol}\n"
+        
+        # Check if message is still too long (safety check)
+        if len(chunk_msg) > 3500:  # Conservative limit
+            # Split even further if needed
+            smaller_chunks = split_symbols_into_chunks(chunk_symbols, header, max_symbols=25)
+            chunks.extend(smaller_chunks)
+        else:
+            chunks.append(chunk_msg)
+    
+    return chunks
 
 if __name__ == "__main__":
     import asyncio
