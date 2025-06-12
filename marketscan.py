@@ -13,11 +13,19 @@ from tqdm import tqdm
 import re
 from datetime import datetime, timezone, timedelta
 
+# Global debug counters
+binance_scanned = 0
+binance_price_matches = 0
+binance_same_color_filtered = 0
+binance_touched_filtered = 0
+
+
 # List of symbols to ignore in all scanning
 IGNORED_SYMBOLS = {
     "USDPUSDT", "USD1USDT", "TUSDUSDT", "AEURUSDT", "USDCUSDT",
     "ZKJUSDT", "FDUSDUSDT", "XUSDUSDT", "EURUSDT", "EURIUSDT", 
-    "USDYUSDT", "USDRUSDT"
+    "USDYUSDT", "USDRUSDT", "ETH3LUSDT", "ETHUSDT-27MAR26", 
+    "ETHUSDT-27JUN25", "ETHUSDT-26DEC25", "ETHUSDT-26SEP25"
 }
 
 # --- Proxy system ---
@@ -444,7 +452,7 @@ def check_equal_price_and_classify(df):
     last_is_green = last_close > last_open
     last_is_red = last_close < last_open
     
-    # Checkclosed['close'] == last_closed['open']
+    # Check if second_last_closed['close'] == last_closed['open']
     if floats_are_equal(second_last_close, last_open):
         equal_price = second_last_close
         
@@ -460,6 +468,7 @@ def check_equal_price_and_classify(df):
         # This eliminates continuation patterns and keeps only reversals
     
     return None, None
+
 
 def current_candle_touched_price(df, price):
     if df.empty or len(df) < 3:
@@ -482,6 +491,13 @@ async def main():
     proxy_pool.populate_from_url(proxy_url)
     proxy_pool.start_checker()
 
+    # Initialize Binance debug counters
+    global binance_scanned, binance_price_matches, binance_same_color_filtered, binance_touched_filtered
+    binance_scanned = 0
+    binance_price_matches = 0
+    binance_same_color_filtered = 0
+    binance_touched_filtered = 0
+    
     TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
     TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
@@ -507,28 +523,70 @@ async def main():
     results = []
     lock = threading.Lock()
 
+    # Add debug counters in scan_symbol function
     def scan_symbol(exchange_name, client, symbol, perp_set, spot_set):
         market = "perp" if symbol in perp_set else "spot"
+    
+        # Debug counters
+        if exchange_name == "Binance":
+            global binance_scanned, binance_price_matches, binance_same_color_filtered, binance_touched_filtered
+        
         for interval in ["1M", "1w", "1d"]:
             try:
                 df = client.fetch_ohlcv(symbol, interval, limit=3, market=market)
-                equal_price, signal_type = check_equal_price_and_classify(df)
             
+                # Increment scan counter for Binance
+                if exchange_name == "Binance":
+                     binance_scanned += 1
+            
+                # Manual check for debugging Binance
+                if exchange_name == "Binance":
+                    second_last_close = float(df.iloc[2]['close'])
+                    last_open = float(df.iloc[1]['open'])
+                
+                    # Check if prices match
+                    if floats_are_equal(second_last_close, last_open):
+                        binance_price_matches += 1
+                    
+                        # Check colors
+                        second_last_is_green = float(df.iloc[2]['close']) > float(df.iloc[2]['open'])
+                        second_last_is_red = float(df.iloc[2]['close']) < float(df.iloc[2]['open'])
+                        last_is_green = float(df.iloc[1]['close']) > float(df.iloc[1]['open'])
+                        last_is_red = float(df.iloc[1]['close']) < float(df.iloc[1]['open'])
+                    
+                        # Check if it's a valid reversal pattern
+                        is_bullish_reversal = second_last_is_red and last_is_green
+                        is_bearish_reversal = second_last_is_green and last_is_red
+                    
+                        if not (is_bullish_reversal or is_bearish_reversal):
+                            binance_same_color_filtered += 1
+                            continue
+                    
+                        # Check if current candle touched the price
+                        current_candle = df.iloc[0]
+                        touched = float(current_candle['low']) <= second_last_close <= float(current_candle['high'])
+                    
+                        if touched:
+                            binance_touched_filtered += 1
+            
+                equal_price, signal_type = check_equal_price_and_classify(df)
+        
                 if equal_price is not None and signal_type is not None:
                     if not current_candle_touched_price(df, equal_price):
                         with lock:
                             results.append((exchange_name, symbol, market, interval, signal_type))
             except Exception as e:
                 logging.warning(f"Failed {exchange_name} {symbol} {market} {interval}: {e}")
+                
 
-    all_symbols = [("Binance", binance_client, sym, binance_perp, binance_spot) for sym in binance_symbols] + \
-                  [("Bybit", bybit_client, sym, bybit_perp, bybit_spot) for sym in bybit_symbols]
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=25) as executor:
-        futures = [executor.submit(scan_symbol, *args) for args in all_symbols]
-        for _ in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Scanning symbols"):
-            pass
-
+    # After scanning, log debug info
+    logging.info(f"\n=== BINANCE DEBUG SUMMARY ===")
+    logging.info(f"Total Binance scans: {binance_scanned}")
+    logging.info(f"Price matches found: {binance_price_matches}")
+    logging.info(f"Filtered out (same colors): {binance_same_color_filtered}")
+    logging.info(f"Filtered out (price touched): {binance_touched_filtered}")
+    logging.info(f"Final Binance signals: {len([r for r in results if r[0] == 'Binance'])}")
+    
     # Create beautiful organized messages
     messages = create_beautiful_telegram_report(results)
 
@@ -554,7 +612,6 @@ def create_beautiful_telegram_report(results):
         timeframes[interval][exchange][signal_type].append(symbol)
     
     # Get timestamp
-    from datetime import datetime, timezone, timedelta
     utc_now = datetime.now(timezone.utc)
     utc_plus_3 = timezone(timedelta(hours=3))
     current_time = utc_now.astimezone(utc_plus_3)
