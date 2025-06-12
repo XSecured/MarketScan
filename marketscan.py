@@ -13,20 +13,7 @@ from tqdm import tqdm
 import re
 from datetime import datetime, timezone, timedelta
 
-
-# Global debug counters
-binance_scanned = 0
-binance_price_matches = 0
-binance_same_color_filtered = 0
-binance_touched_filtered = 0
-total_scans = 0
-successful_scans = 0
-failed_scans = 0
-binance_added_signals = 0
-bybit_added_signals = 0
-
-
-
+# List of symbols to ignore in all scanning
 # List of symbols to ignore in all scanning
 IGNORED_SYMBOLS = {
     "USDPUSDT", "USD1USDT", "TUSDUSDT", "AEURUSDT", "USDCUSDT",
@@ -459,7 +446,7 @@ def check_equal_price_and_classify(df):
     last_is_green = last_close > last_open
     last_is_red = last_close < last_open
     
-    # Check if second_last_closed['close'] == last_closed['open']
+    # Checkclosed['close'] == last_closed['open']
     if floats_are_equal(second_last_close, last_open):
         equal_price = second_last_close
         
@@ -476,7 +463,6 @@ def check_equal_price_and_classify(df):
     
     return None, None
 
-
 def current_candle_touched_price(df, price):
     if df.empty or len(df) < 3:
         return False
@@ -487,414 +473,74 @@ def current_candle_touched_price(df, price):
 # --- Main async scanning and reporting ---
 
 async def main():
-    # Enhanced logging configuration
-    logging.basicConfig(
-        level=logging.INFO, 
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.StreamHandler(),
-            logging.FileHandler('scanner_debug.log', mode='w')
-        ]
-    )
-    
-    logging.info("🚀 Starting Reversal Level Scanner")
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 
-    # Check environment variables
     proxy_url = os.getenv("PROXY_LIST_URL")
     if not proxy_url:
-        logging.error("❌ PROXY_LIST_URL environment variable not set")
+        logging.error("PROXY_LIST_URL environment variable not set")
         return
+
+    proxy_pool = ProxyPool(max_pool_size=25)
+    proxy_pool.populate_from_url(proxy_url)
+    proxy_pool.start_checker()
 
     TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
     TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        logging.error("❌ Telegram environment variables not fully set")
+        logging.error("Telegram environment variables not fully set")
         return
 
-    logging.info("✅ Environment variables validated")
-
-    # Initialize proxy pool
-    logging.info("🔄 Initializing proxy pool...")
-    proxy_pool = ProxyPool(max_pool_size=25)
-    proxy_pool.populate_from_url(proxy_url)
-    proxy_pool.start_checker()
-    logging.info("✅ Proxy pool initialized")
-
-    # Initialize clients
-    logging.info("🔄 Initializing exchange clients...")
     binance_client = BinanceClient(proxy_pool)
     bybit_client = BybitClient(proxy_pool)
-    logging.info("✅ Exchange clients initialized")
 
-    # Fetch symbols with detailed logging
-    logging.info("📊 Fetching exchange symbols...")
-    
-    logging.info("  🔍 Fetching Binance PERP symbols...")
     binance_perp = set(binance_client.get_perp_symbols())
-    logging.info(f"  ✅ Binance PERP: {len(binance_perp)} symbols")
-    
-    logging.info("  🔍 Fetching Binance SPOT symbols...")
     binance_spot = set(binance_client.get_spot_symbols())
-    logging.info(f"  ✅ Binance SPOT: {len(binance_spot)} symbols")
-    
-    logging.info("  🔍 Fetching Bybit PERP symbols...")
+
     bybit_perp = set(bybit_client.get_perp_symbols())
-    logging.info(f"  ✅ Bybit PERP: {len(bybit_perp)} symbols")
-    
-    logging.info("  🔍 Fetching Bybit SPOT symbols...")
     bybit_spot = set(bybit_client.get_spot_symbols())
-    logging.info(f"  ✅ Bybit SPOT: {len(bybit_spot)} symbols")
 
-    # Deduplicate symbols with logging
-    logging.info("🔄 Deduplicating symbols...")
-    
-    logging.info(f"  📋 Before deduplication - Binance PERP: {len(binance_perp)}, SPOT: {len(binance_spot)}")
     binance_symbols = deduplicate_symbols(binance_perp, binance_spot)
-    logging.info(f"  ✅ After deduplication - Binance: {len(binance_symbols)} symbols")
-    
-    logging.info(f"  📋 Before deduplication - Bybit PERP: {len(bybit_perp)}, SPOT: {len(bybit_spot)}")
     bybit_symbols = deduplicate_symbols(bybit_perp, bybit_spot)
-    logging.info(f"  ✅ After deduplication - Bybit: {len(bybit_symbols)} symbols")
 
-    # Log symbol samples
-    logging.info(f"🔍 Binance symbol samples: {binance_symbols[:5] if binance_symbols else 'EMPTY'}")
-    logging.info(f"🔍 Bybit symbol samples: {bybit_symbols[:5] if bybit_symbols else 'EMPTY'}")
-    
-    # Add symbol overlap analysis
-    binance_symbols_set = set(binance_symbols)
-    bybit_symbols_set = set(bybit_symbols)
+    logging.info(f"Binance symbols to scan: {len(binance_symbols)}")
+    logging.info(f"Bybit symbols to scan: {len(bybit_symbols)}")
 
-    overlap = binance_symbols_set.intersection(bybit_symbols_set)
-    logging.info(f"📊 SYMBOL OVERLAP ANALYSIS:")
-    logging.info(f"  - Binance only: {len(binance_symbols_set - bybit_symbols_set)}")
-    logging.info(f"  - Bybit only: {len(bybit_symbols_set - binance_symbols_set)}")
-    logging.info(f"  - Both exchanges: {len(overlap)}")
-    logging.info(f"  - Common symbols sample: {list(overlap)[:10]}")
-    
-    # Log known problematic symbols for special debugging
-    problem_symbols = ["AAVEUSDT", "PEPEUSDT", "BTCUSDT", "ETHUSDT", "SOLUSDT", "DOTUSDT"]
-    logging.info(f"🔍 CHECKING PROBLEM SYMBOLS:")
-    for sym in problem_symbols:
-        in_binance = sym in binance_symbols_set
-        in_bybit = sym in bybit_symbols_set
-        logging.info(f"  - Symbol {sym}: Binance={in_binance}, Bybit={in_bybit}")
-    
-    # Initialize debug counters as GLOBAL
-    global binance_scanned, binance_price_matches, binance_same_color_filtered, binance_touched_filtered
-    global total_scans, successful_scans, failed_scans, binance_added_signals, bybit_added_signals
-    
-    binance_scanned = 0
-    binance_price_matches = 0
-    binance_same_color_filtered = 0
-    binance_touched_filtered = 0
-    total_scans = 0
-    successful_scans = 0
-    failed_scans = 0
-    binance_added_signals = 0
-    bybit_added_signals = 0
-    
-    logging.info("🔢 Debug counters initialized")
-
-    # Initialize results storage
     results = []
-    binance_results = []  # Separate storage for Binance results
-    bybit_results = []    # Separate storage for Bybit results
     lock = threading.Lock()
 
     def scan_symbol(exchange_name, client, symbol, perp_set, spot_set):
-        # Access global variables
-        global total_scans, successful_scans, failed_scans, binance_added_signals, bybit_added_signals
-        global binance_scanned, binance_price_matches, binance_same_color_filtered, binance_touched_filtered
-        
-        # Track scan start time for debugging slow scans
-        scan_start = time.time()
-        
-        # Debug logging for specific symbols
-        is_problem_symbol = symbol in problem_symbols
-        if is_problem_symbol:
-            logging.info(f"🔍 SCANNING {symbol} on {exchange_name}")
-        
-        with lock:
-            total_scans += 1
-            
-        # Log every 100th scan
-        if total_scans % 100 == 0:
-            logging.info(f"📊 Scan progress: {total_scans} total, {successful_scans} successful, {failed_scans} failed")
-        
         market = "perp" if symbol in perp_set else "spot"
-        
         for interval in ["1M", "1w", "1d"]:
             try:
-                # Increment Binance counter
-                if exchange_name == "Binance":
-                    with lock:
-                        binance_scanned += 1
-                
-                # Fetch data
                 df = client.fetch_ohlcv(symbol, interval, limit=3, market=market)
-                
-                if df.empty or len(df) < 3:
-                    if is_problem_symbol:
-                        logging.warning(f"⚠️ {exchange_name} {symbol} {interval}: Insufficient data ({len(df)} rows)")
-                    continue
-                
-                # Detailed data dump for problem symbols
-                if is_problem_symbol:
-                    logging.info(f"📈 {exchange_name} {symbol} {interval} DATA DUMP:")
-                    for i in range(min(3, len(df))):
-                        logging.info(f"  Row {i}: Open={df.iloc[i]['open']:.8f}, Close={df.iloc[i]['close']:.8f}, Low={df.iloc[i]['low']:.8f}, High={df.iloc[i]['high']:.8f}")
-                
-                # Manual exhaustive debug check for Binance
-                if exchange_name == "Binance":
-                    second_last_close = float(df.iloc[2]['close'])
-                    last_open = float(df.iloc[1]['open'])
-                    
-                    # Check if prices match
-                    is_price_match = floats_are_equal(second_last_close, last_open)
-                    if is_price_match:
-                        with lock:
-                            binance_price_matches += 1
-                        
-                        # Check colors
-                        second_last_is_green = float(df.iloc[2]['close']) > float(df.iloc[2]['open'])
-                        second_last_is_red = float(df.iloc[2]['close']) < float(df.iloc[2]['open'])
-                        last_is_green = float(df.iloc[1]['close']) > float(df.iloc[1]['open'])
-                        last_is_red = float(df.iloc[1]['close']) < float(df.iloc[1]['open'])
-                        
-                        # Check if it's a valid reversal pattern
-                        is_bullish_reversal = second_last_is_red and last_is_green
-                        is_bearish_reversal = second_last_is_green and last_is_red
-                        is_valid_reversal = is_bullish_reversal or is_bearish_reversal
-                        
-                        if not is_valid_reversal:
-                            with lock:
-                                binance_same_color_filtered += 1
-                            if is_problem_symbol:
-                                logging.info(f"🚫 BINANCE FILTERED (same color): {symbol} {interval}")
-                                logging.info(f"    Second last: {'GREEN' if second_last_is_green else 'RED'}, Last: {'GREEN' if last_is_green else 'RED'}")
-                            continue
-                        
-                        # Check if current candle touched the price
-                        current_candle = df.iloc[0]
-                        touched = float(current_candle['low']) <= second_last_close <= float(current_candle['high'])
-                        
-                        if touched:
-                            with lock:
-                                binance_touched_filtered += 1
-                            if is_problem_symbol:
-                                logging.info(f"🚫 BINANCE FILTERED (touched): {symbol} {interval} - Price: {second_last_close:.8f}, Current Low: {float(current_candle['low']):.8f}, High: {float(current_candle['high']):.8f}")
-                            continue
-                        
-                        # If we reach here, it should be a valid Binance signal
-                        signal_type = "bullish" if is_bullish_reversal else "bearish"
-                        logging.info(f"🎯 BINANCE SIGNAL FOUND: {symbol} {market} {interval} {signal_type} @ {second_last_close:.8f}")
-                    elif is_problem_symbol:
-                        diff = abs(second_last_close - last_open)
-                        logging.info(f"❌ BINANCE NO MATCH: {symbol} {interval} - Second last close: {second_last_close:.8f}, Last open: {last_open:.8f}, Diff: {diff:.12f}")
-                
-                # Use the main function for both exchanges
                 equal_price, signal_type = check_equal_price_and_classify(df)
             
                 if equal_price is not None and signal_type is not None:
-                    # Cross-check with current_candle_touched_price function
-                    touched = current_candle_touched_price(df, equal_price)
-                    if not touched:
+                    if not current_candle_touched_price(df, equal_price):
                         with lock:
                             results.append((exchange_name, symbol, market, interval, signal_type))
-                            successful_scans += 1
-                            
-                            # Track separately by exchange
-                            if exchange_name == "Binance":
-                                binance_results.append((exchange_name, symbol, market, interval, signal_type))
-                                binance_added_signals += 1
-                                logging.info(f"✅ BINANCE SIGNAL ADDED: {symbol} {market} {interval} {signal_type} @ {equal_price:.8f}")
-                            else:
-                                bybit_results.append((exchange_name, symbol, market, interval, signal_type))
-                                bybit_added_signals += 1
-                                if is_problem_symbol:
-                                    logging.info(f"✅ BYBIT SIGNAL ADDED: {symbol} {market} {interval} {signal_type} @ {equal_price:.8f}")
-                    elif is_problem_symbol:
-                        logging.info(f"🚫 {exchange_name} FILTERED (touched): {symbol} {market} {interval} {signal_type} @ {equal_price:.8f}")
-                elif is_problem_symbol:
-                    logging.info(f"❌ {exchange_name} NO SIGNAL: {symbol} {market} {interval}")
-                
             except Exception as e:
-                with lock:
-                    failed_scans += 1
-                logging.warning(f"❌ Failed {exchange_name} {symbol} {market} {interval}: {e}")
-        
-        # Track scan duration for slow scans
-        scan_duration = time.time() - scan_start
-        if scan_duration > 5.0:  # Log slow scans over 5 seconds
-            logging.warning(f"⏱️ SLOW SCAN: {exchange_name} {symbol} took {scan_duration:.2f} seconds")
+                logging.warning(f"Failed {exchange_name} {symbol} {market} {interval}: {e}")
 
-    # Create task list with detailed logging
-    logging.info("📋 Creating scan tasks...")
-    
-    # Create separate lists for Binance and Bybit tasks
-    binance_tasks = [("Binance", binance_client, sym, binance_perp, binance_spot) for sym in binance_symbols]
-    bybit_tasks = [("Bybit", bybit_client, sym, bybit_perp, bybit_spot) for sym in bybit_symbols]
-    
-    # Check if common test symbols are in both task lists
-    for sym in problem_symbols:
-        binance_has = any(t[2] == sym for t in binance_tasks)
-        bybit_has = any(t[2] == sym for t in bybit_tasks)
-        logging.info(f"  TASK LIST CHECK - {sym}: Binance={binance_has}, Bybit={bybit_has}")
-    
-    # Combine task lists for scanning
-    all_symbols = binance_tasks + bybit_tasks
-    
-    # Check for duplicate tasks where the same symbol appears for both exchanges
-    all_tasks_dict = {}
-    for task in all_symbols:
-        exchange, _, symbol, _, _ = task
-        if symbol not in all_tasks_dict:
-            all_tasks_dict[symbol] = []
-        all_tasks_dict[symbol].append(exchange)
-    
-    duplicates = [sym for sym, exch_list in all_tasks_dict.items() if len(exch_list) > 1]
-    logging.info(f"📊 DUPLICATE SYMBOL TASKS: {len(duplicates)} symbols in both exchanges")
-    if duplicates:
-        logging.info(f"  - First 10 duplicates: {duplicates[:10]}")
-    
-    logging.info(f"📊 Task creation summary:")
-    logging.info(f"  - Binance tasks: {len(binance_tasks)}")
-    logging.info(f"  - Bybit tasks: {len(bybit_tasks)}")
-    logging.info(f"  - Total tasks: {len(all_symbols)}")
-    
-    if not all_symbols:
-        logging.error("❌ No scan tasks created! Check symbol fetching.")
-        return
-    
-    # Log first few tasks of each type
-    if binance_tasks:
-        logging.info(f"🔍 First 3 Binance tasks: {[(t[0], t[2]) for t in binance_tasks[:3]]}")
-    if bybit_tasks:
-        logging.info(f"🔍 First 3 Bybit tasks: {[(t[0], t[2]) for t in bybit_tasks[:3]]}")
+    all_symbols = [("Binance", binance_client, sym, binance_perp, binance_spot) for sym in binance_symbols] + \
+                  [("Bybit", bybit_client, sym, bybit_perp, bybit_spot) for sym in bybit_symbols]
 
-    # Execute scanning with detailed monitoring
-    logging.info("🚀 Starting concurrent scanning...")
-    start_time = time.time()
-    
-    # Process Binance tasks first, then Bybit
-    logging.info(f"📤 Submitting {len(binance_tasks)} Binance tasks to thread pool...")
-    
     with concurrent.futures.ThreadPoolExecutor(max_workers=25) as executor:
-        binance_futures = [executor.submit(scan_symbol, *args) for args in binance_tasks]
-        logging.info(f"✅ Successfully submitted {len(binance_futures)} Binance futures")
-        
-        completed_count = 0
-        exception_count = 0
-        
-        for future in tqdm(concurrent.futures.as_completed(binance_futures), total=len(binance_futures), desc="Scanning Binance"):
-            completed_count += 1
-            
-            # Check for exceptions
-            try:
-                future.result()
-            except Exception as e:
-                exception_count += 1
-                logging.error(f"❌ Binance task exception #{exception_count}: {e}")
-            
-            # Log progress every 100 completions
-            if completed_count % 100 == 0:
-                logging.info(f"📊 Binance progress: {completed_count}/{len(binance_futures)} completed, {exception_count} exceptions")
-    
-    # Now process Bybit tasks
-    logging.info(f"📤 Submitting {len(bybit_tasks)} Bybit tasks to thread pool...")
-    
-    with concurrent.futures.ThreadPoolExecutor(max_workers=25) as executor:
-        bybit_futures = [executor.submit(scan_symbol, *args) for args in bybit_tasks]
-        logging.info(f"✅ Successfully submitted {len(bybit_futures)} Bybit futures")
-        
-        completed_count = 0
-        exception_count = 0
-        
-        for future in tqdm(concurrent.futures.as_completed(bybit_futures), total=len(bybit_futures), desc="Scanning Bybit"):
-            completed_count += 1
-            
-            # Check for exceptions
-            try:
-                future.result()
-            except Exception as e:
-                exception_count += 1
-                logging.error(f"❌ Bybit task exception #{exception_count}: {e}")
-            
-            # Log progress every 100 completions
-            if completed_count % 100 == 0:
-                logging.info(f"📊 Bybit progress: {completed_count}/{len(bybit_futures)} completed, {exception_count} exceptions")
+        futures = [executor.submit(scan_symbol, *args) for args in all_symbols]
+        for _ in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Scanning symbols"):
+            pass
 
-    end_time = time.time()
-    scan_duration = end_time - start_time
-    
-    logging.info(f"✅ Scanning completed in {scan_duration:.2f} seconds")
-    logging.info(f"📊 Final scan statistics:")
-    logging.info(f"  - Total scans attempted: {total_scans}")
-    logging.info(f"  - Successful scans: {successful_scans}")
-    logging.info(f"  - Failed scans: {failed_scans}")
-    
-    # Detailed Binance debug summary
-    logging.info(f"\n=== 🔍 BINANCE DEBUG SUMMARY ===")
-    logging.info(f"Total Binance scans: {binance_scanned}")
-    logging.info(f"Price matches found: {binance_price_matches}")
-    logging.info(f"Filtered out (same colors): {binance_same_color_filtered}")
-    logging.info(f"Filtered out (price touched): {binance_touched_filtered}")
-    logging.info(f"Signals added: {binance_added_signals}")
-    
-    # Check for specific problems
-    expected_binance_scans = len(binance_symbols) * 3  # 3 timeframes
-    if binance_scanned < expected_binance_scans:
-        logging.warning(f"⚠️ BINANCE SCAN SHORTFALL: Expected {expected_binance_scans}, got {binance_scanned}")
-    
-    if binance_price_matches == 0:
-        logging.warning(f"⚠️ NO BINANCE PRICE MATCHES FOUND: This suggests data format differences")
-    
-    if binance_price_matches > 0 and binance_added_signals == 0:
-        logging.warning(f"⚠️ BINANCE SIGNALS ALL FILTERED: {binance_same_color_filtered} same color, {binance_touched_filtered} price touched")
-    
-    logging.info(f"\n=== 🔍 SIGNAL COUNT SUMMARY ===")
-    logging.info(f"Binance signals: {len(binance_results)}")
-    logging.info(f"Bybit signals: {len(bybit_results)}")
-    logging.info(f"Total signals: {len(results)}")
-    
-    # Verify results consistency
-    if len(binance_results) + len(bybit_results) != len(results):
-        logging.error(f"❌ RESULTS INCONSISTENCY: Binance({len(binance_results)}) + Bybit({len(bybit_results)}) != Total({len(results)})")
-    
-    # Analyze the symbols that produced signals
-    binance_signal_symbols = set(r[1] for r in binance_results)
-    bybit_signal_symbols = set(r[1] for r in bybit_results)
-    
-    common_signal_symbols = binance_signal_symbols.intersection(bybit_signal_symbols)
-    logging.info(f"📊 SIGNAL SYMBOLS ANALYSIS:")
-    logging.info(f"  - Binance signal symbols: {len(binance_signal_symbols)}")
-    logging.info(f"  - Bybit signal symbols: {len(bybit_signal_symbols)}")
-    logging.info(f"  - Common signal symbols: {len(common_signal_symbols)}")
-    
-    if common_signal_symbols:
-        logging.info(f"  - Common symbols sample: {list(common_signal_symbols)[:10]}")
-
-    # Create and send telegram report
-    logging.info("📨 Creating Telegram report...")
+    # Create beautiful organized messages
     messages = create_beautiful_telegram_report(results)
-    
-    if not messages:
-        logging.error("❌ No messages created from results")
-        return
 
-    logging.info(f"📤 Sending {len(messages)} Telegram messages...")
     bot = Bot(token=TELEGRAM_TOKEN)
-    
-    for i, msg in enumerate(messages):
+    for msg in messages:
         try:
             await bot.send_message(chat_id=int(TELEGRAM_CHAT_ID), text=msg, parse_mode='Markdown')
-            logging.info(f"✅ Telegram message {i+1}/{len(messages)} sent successfully")
+            logging.info("Telegram report sent successfully.")
         except Exception as e:
-            logging.error(f"❌ Failed to send Telegram message {i+1}: {e}")
-
-    logging.info("🏁 Scanner completed successfully")
-
+            logging.error(f"Failed to send Telegram message: {e}")
 
 def create_beautiful_telegram_report(results):
     """Create clean telegram report with bullet points, minimal parts"""
@@ -910,6 +556,7 @@ def create_beautiful_telegram_report(results):
         timeframes[interval][exchange][signal_type].append(symbol)
     
     # Get timestamp
+    from datetime import datetime, timezone, timedelta
     utc_now = datetime.now(timezone.utc)
     utc_plus_3 = timezone(timedelta(hours=3))
     current_time = utc_now.astimezone(utc_plus_3)
