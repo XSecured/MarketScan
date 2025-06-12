@@ -14,13 +14,71 @@ import re
 from datetime import datetime, timezone, timedelta
 
 # List of symbols to ignore in all scanning
-# List of symbols to ignore in all scanning
 IGNORED_SYMBOLS = {
     "USDPUSDT", "USD1USDT", "TUSDUSDT", "AEURUSDT", "USDCUSDT",
     "ZKJUSDT", "FDUSDUSDT", "XUSDUSDT", "EURUSDT", "EURIUSDT", 
     "USDYUSDT", "USDRUSDT", "ETH3LUSDT", "ETHUSDT-27MAR26", 
     "ETHUSDT-27JUN25", "ETHUSDT-26DEC25", "ETHUSDT-26SEP25"
 }
+
+# --- Normalization and Priority Functions ---
+
+def normalize_symbol(symbol: str) -> str:
+    """
+    Normalize symbol to CCXT style 'BASE/QUOTE' format.
+    Removes suffixes like ':USDT' from futures symbols.
+    """
+    symbol = symbol.upper()
+    if ':' in symbol:
+        symbol = symbol.split(':')[0]
+    if '/' in symbol:
+        return symbol
+    else:
+        base = symbol[:-4]
+        quote = symbol[-4:]
+        return f"{base}/{quote}"
+
+def apply_priority(binance_perp, binance_spot, bybit_perp, bybit_spot):
+    """
+    Deduplicate symbols across exchanges by priority:
+    1) Binance perps
+    2) Binance spots (excluding symbols already in Binance perps)
+    3) Bybit perps (excluding symbols in Binance perps + spots)
+    4) Bybit spots (excluding symbols in all above)
+    Only symbols with USDT quote are kept.
+    """
+
+    # Normalize all symbols to 'BASE/QUOTE' and filter for USDT only
+    binance_perp_norm = {normalize_symbol(s): s for s in binance_perp if s.endswith('USDT')}
+    binance_spot_norm = {normalize_symbol(s): s for s in binance_spot if s.endswith('USDT')}
+    bybit_perp_norm = {normalize_symbol(s): s for s in bybit_perp if s.endswith('USDT')}
+    bybit_spot_norm = {normalize_symbol(s): s for s in bybit_spot if s.endswith('USDT')}
+
+    # Step 1: Binance perps (highest priority) - keep all
+    binance_perp_set = set(binance_perp_norm.keys())
+
+    # Step 2: Binance spots - exclude symbols already in Binance perps
+    binance_spot_set = set(binance_spot_norm.keys()) - binance_perp_set
+
+    # Step 3: Bybit perps - exclude symbols in Binance perps + spots
+    bybit_perp_set = set(bybit_perp_norm.keys()) - binance_perp_set - binance_spot_set
+
+    # Step 4: Bybit spots - exclude symbols in all above three sets
+    bybit_spot_set = set(bybit_spot_norm.keys()) - binance_perp_set - binance_spot_set - bybit_perp_set
+
+    # Map back to original symbols (to preserve original naming)
+    final_binance_perp = {binance_perp_norm[s] for s in binance_perp_set}
+    final_binance_spot = {binance_spot_norm[s] for s in binance_spot_set}
+    final_bybit_perp = {bybit_perp_norm[s] for s in bybit_perp_set}
+    final_bybit_spot = {bybit_spot_norm[s] for s in bybit_spot_set}
+
+    logging.info(f"After priority deduplication:")
+    logging.info(f"  Binance Perps: {len(final_binance_perp)}")
+    logging.info(f"  Binance Spots: {len(final_binance_spot)}")
+    logging.info(f"  Bybit Perps: {len(final_bybit_perp)}")
+    logging.info(f"  Bybit Spots: {len(final_bybit_spot)}")
+
+    return final_binance_perp, final_binance_spot, final_bybit_perp, final_bybit_spot
 
 # --- Proxy system ---
 
@@ -259,8 +317,10 @@ class BinanceClient:
                     'takerBuyBaseAssetVolume', 'takerBuyQuoteAssetVolume', 'ignore'
                 ])
                 df[['high', 'low', 'close', 'open', 'volume']] = df[['high', 'low', 'close', 'open', 'volume']].astype(float)
-                # ADD THIS LINE: Reverse to match Bybit's newest-to-oldest order
+                
+                # Reverse to match Bybit's newest-to-oldest order
                 df = df.iloc[::-1].reset_index(drop=True)
+                
                 return df
             except RuntimeError as e:
                 if "No working proxies available" in str(e):
@@ -415,11 +475,6 @@ class BybitClient:
 
 # --- Helper functions ---
 
-def deduplicate_symbols(perp_list, spot_list):
-    spot_only = set(spot_list) - set(perp_list)
-    all_symbols = list(perp_list) + list(spot_only)
-    return [s for s in all_symbols if s not in IGNORED_SYMBOLS]
-
 def floats_are_equal(a, b, tol=1e-8):
     return abs(a - b) < tol
 
@@ -428,7 +483,7 @@ def check_equal_price_and_classify(df):
     if df.empty or len(df) < 3:
         return None, None
     
-    # CORRECTED: API returns newest to oldest
+    # API returns newest to oldest
     # df.iloc[0] = Current candle (ignore)
     # df.iloc[1] = Last closed candle
     # df.iloc[2] = Second to last closed candle
@@ -448,7 +503,7 @@ def check_equal_price_and_classify(df):
     last_is_green = last_close > last_open
     last_is_red = last_close < last_open
     
-    # Checkclosed['close'] == last_closed['open']
+    # Check if second_last_closed['close'] == last_closed['open']
     if floats_are_equal(second_last_close, last_open):
         equal_price = second_last_close
         
@@ -471,78 +526,6 @@ def current_candle_touched_price(df, price):
     # Current candle is df.iloc[0] (newest/live)
     current_candle = df.iloc[0]
     return float(current_candle['low']) <= price <= float(current_candle['high'])
-    
-# --- Main async scanning and reporting ---
-
-async def main():
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
-
-    proxy_url = os.getenv("PROXY_LIST_URL")
-    if not proxy_url:
-        logging.error("PROXY_LIST_URL environment variable not set")
-        return
-
-    proxy_pool = ProxyPool(max_pool_size=25)
-    proxy_pool.populate_from_url(proxy_url)
-    proxy_pool.start_checker()
-
-    TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-    TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
-    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        logging.error("Telegram environment variables not fully set")
-        return
-
-    binance_client = BinanceClient(proxy_pool)
-    bybit_client = BybitClient(proxy_pool)
-
-    binance_perp = set(binance_client.get_perp_symbols())
-    binance_spot = set(binance_client.get_spot_symbols())
-
-    bybit_perp = set(bybit_client.get_perp_symbols())
-    bybit_spot = set(bybit_client.get_spot_symbols())
-
-    binance_symbols = deduplicate_symbols(binance_perp, binance_spot)
-    bybit_symbols = deduplicate_symbols(bybit_perp, bybit_spot)
-
-    logging.info(f"Binance symbols to scan: {len(binance_symbols)}")
-    logging.info(f"Bybit symbols to scan: {len(bybit_symbols)}")
-
-    results = []
-    lock = threading.Lock()
-
-    def scan_symbol(exchange_name, client, symbol, perp_set, spot_set):
-        market = "perp" if symbol in perp_set else "spot"
-        for interval in ["1M", "1w", "1d"]:
-            try:
-                df = client.fetch_ohlcv(symbol, interval, limit=3, market=market)
-                equal_price, signal_type = check_equal_price_and_classify(df)
-            
-                if equal_price is not None and signal_type is not None:
-                    if not current_candle_touched_price(df, equal_price):
-                        with lock:
-                            results.append((exchange_name, symbol, market, interval, signal_type))
-            except Exception as e:
-                logging.warning(f"Failed {exchange_name} {symbol} {market} {interval}: {e}")
-
-    all_symbols = [("Binance", binance_client, sym, binance_perp, binance_spot) for sym in binance_symbols] + \
-                  [("Bybit", bybit_client, sym, bybit_perp, bybit_spot) for sym in bybit_symbols]
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=25) as executor:
-        futures = [executor.submit(scan_symbol, *args) for args in all_symbols]
-        for _ in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Scanning symbols"):
-            pass
-
-    # Create beautiful organized messages
-    messages = create_beautiful_telegram_report(results)
-
-    bot = Bot(token=TELEGRAM_TOKEN)
-    for msg in messages:
-        try:
-            await bot.send_message(chat_id=int(TELEGRAM_CHAT_ID), text=msg, parse_mode='Markdown')
-            logging.info("Telegram report sent successfully.")
-        except Exception as e:
-            logging.error(f"Failed to send Telegram message: {e}")
 
 def create_beautiful_telegram_report(results):
     """Create clean telegram report with bullet points, minimal parts"""
@@ -644,6 +627,88 @@ def create_beautiful_telegram_report(results):
             messages.append(current_msg.strip())
     
     return messages
+
+# --- Main async scanning and reporting ---
+
+async def main():
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+
+    proxy_url = os.getenv("PROXY_LIST_URL")
+    if not proxy_url:
+        logging.error("PROXY_LIST_URL environment variable not set")
+        return
+
+    proxy_pool = ProxyPool(max_pool_size=25)
+    proxy_pool.populate_from_url(proxy_url)
+    proxy_pool.start_checker()
+
+    TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+    TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        logging.error("Telegram environment variables not fully set")
+        return
+
+    binance_client = BinanceClient(proxy_pool)
+    bybit_client = BybitClient(proxy_pool)
+
+    binance_perp_raw = set(binance_client.get_perp_symbols())
+    binance_spot_raw = set(binance_client.get_spot_symbols())
+    bybit_perp_raw = set(bybit_client.get_perp_symbols())
+    bybit_spot_raw = set(bybit_client.get_spot_symbols())
+
+    # Apply priority deduplication with USDT filtering
+    binance_perp, binance_spot, bybit_perp, bybit_spot = apply_priority(
+        binance_perp_raw, binance_spot_raw, bybit_perp_raw, bybit_spot_raw
+    )
+
+    # Apply ignored symbols filter
+    final_binance_perp = {s for s in binance_perp if s not in IGNORED_SYMBOLS}
+    final_binance_spot = {s for s in binance_spot if s not in IGNORED_SYMBOLS}
+    final_bybit_perp = {s for s in bybit_perp if s not in IGNORED_SYMBOLS}
+    final_bybit_spot = {s for s in bybit_spot if s not in IGNORED_SYMBOLS}
+
+    total_symbols = len(final_binance_perp) + len(final_binance_spot) + len(final_bybit_perp) + len(final_bybit_spot)
+    logging.info(f"Total symbols to scan after priority deduplication: {total_symbols}")
+
+    results = []
+    lock = threading.Lock()
+
+    def scan_symbol(exchange_name, client, symbol, perp_set, spot_set):
+        market = "perp" if symbol in perp_set else "spot"
+        for interval in ["1M", "1w", "1d"]:
+            try:
+                df = client.fetch_ohlcv(symbol, interval, limit=3, market=market)
+                equal_price, signal_type = check_equal_price_and_classify(df)
+            
+                if equal_price is not None and signal_type is not None:
+                    if not current_candle_touched_price(df, equal_price):
+                        with lock:
+                            results.append((exchange_name, symbol, market, interval, signal_type))
+            except Exception as e:
+                logging.warning(f"Failed {exchange_name} {symbol} {market} {interval}: {e}")
+
+    all_symbols = []
+    all_symbols.extend([("Binance", binance_client, sym, binance_perp_raw, binance_spot_raw) for sym in final_binance_perp])
+    all_symbols.extend([("Binance", binance_client, sym, binance_perp_raw, binance_spot_raw) for sym in final_binance_spot])
+    all_symbols.extend([("Bybit", bybit_client, sym, bybit_perp_raw, bybit_spot_raw) for sym in final_bybit_perp])
+    all_symbols.extend([("Bybit", bybit_client, sym, bybit_perp_raw, bybit_spot_raw) for sym in final_bybit_spot])
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=25) as executor:
+        futures = [executor.submit(scan_symbol, *args) for args in all_symbols]
+        for _ in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Scanning symbols"):
+            pass
+
+    # Create beautiful organized messages
+    messages = create_beautiful_telegram_report(results)
+
+    bot = Bot(token=TELEGRAM_TOKEN)
+    for msg in messages:
+        try:
+            await bot.send_message(chat_id=int(TELEGRAM_CHAT_ID), text=msg, parse_mode='Markdown')
+            logging.info("Telegram report sent successfully.")
+        except Exception as e:
+            logging.error(f"Failed to send Telegram message: {e}")
 
 if __name__ == "__main__":
     import asyncio
