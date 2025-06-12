@@ -13,11 +13,17 @@ from tqdm import tqdm
 import re
 from datetime import datetime, timezone, timedelta
 
-# Global debug counters
+
+# Global debug counters - ADD THESE AT TOP OF FILE
 binance_scanned = 0
 binance_price_matches = 0
 binance_same_color_filtered = 0
 binance_touched_filtered = 0
+
+# ADD THESE NEW GLOBAL VARIABLES
+total_scans = 0
+successful_scans = 0
+failed_scans = 0
 
 
 # List of symbols to ignore in all scanning
@@ -550,23 +556,26 @@ async def main():
     logging.info(f"🔍 Binance symbol samples: {binance_symbols[:5] if binance_symbols else 'EMPTY'}")
     logging.info(f"🔍 Bybit symbol samples: {bybit_symbols[:5] if bybit_symbols else 'EMPTY'}")
     
-    # Initialize debug counters
+    # RESET all global counters (don't redeclare them)
     global binance_scanned, binance_price_matches, binance_same_color_filtered, binance_touched_filtered
+    global total_scans, successful_scans, failed_scans
+    
     binance_scanned = 0
     binance_price_matches = 0
     binance_same_color_filtered = 0
     binance_touched_filtered = 0
+    total_scans = 0
+    successful_scans = 0
+    failed_scans = 0
     
-    logging.info("🔢 Debug counters initialized")
+    logging.info("🔢 Debug counters reset")
 
     # Initialize results
     results = []
     lock = threading.Lock()
-    total_scans = 0
-    successful_scans = 0
-    failed_scans = 0
 
     def scan_symbol(exchange_name, client, symbol, perp_set, spot_set):
+        # Access global variables
         global total_scans, successful_scans, failed_scans
         global binance_scanned, binance_price_matches, binance_same_color_filtered, binance_touched_filtered
         
@@ -647,6 +656,7 @@ async def main():
                     failed_scans += 1
                 logging.warning(f"❌ Failed {exchange_name} {symbol} {market} {interval}: {e}")
 
+    # Rest of main function stays the same...
     # Create task list with detailed logging
     logging.info("📋 Creating scan tasks...")
     
@@ -746,6 +756,7 @@ async def main():
             logging.error(f"❌ Failed to send Telegram message {i+1}: {e}")
 
     logging.info("🏁 Scanner completed successfully")
+
 
 def create_beautiful_telegram_report(results):
     """Create clean telegram report with bullet points, minimal parts"""
