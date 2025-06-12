@@ -259,6 +259,8 @@ class BinanceClient:
                     'takerBuyBaseAssetVolume', 'takerBuyQuoteAssetVolume', 'ignore'
                 ])
                 df[['high', 'low', 'close', 'open', 'volume']] = df[['high', 'low', 'close', 'open', 'volume']].astype(float)
+                # ADD THIS LINE: Reverse to match Bybit's newest-to-oldest order
+                df = df.iloc[::-1].reset_index(drop=True)
                 return df
             except RuntimeError as e:
                 if "No working proxies available" in str(e):
