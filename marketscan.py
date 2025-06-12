@@ -26,8 +26,6 @@ class Config:
     MAX_PROXY_FAILURES: int = 3
     FETCH_LIMIT: int = 100
     OHLCV_MIN_CANDLES: int = 3
-    CIRCUIT_BREAKER_FAILURE_THRESHOLD: int = 5
-    CIRCUIT_BREAKER_TIMEOUT: int = 60
     TELEGRAM_MESSAGE_MAX_LENGTH: int = 4000
 
 # Initialize configuration
@@ -42,57 +40,45 @@ IGNORED_SYMBOLS = {
 }
 
 # Custom Exception Hierarchy
-class TradingBotException(Exception):
-    """Base exception for trading bot"""
+class MarketScannerException(Exception):
+    """Base exception for market scanner"""
     pass
 
-class ProxyException(TradingBotException):
+class ProxyException(MarketScannerException):
     """Raised when proxy-related issues occur"""
     pass
 
-class ExchangeAPIException(TradingBotException):
+class ExchangeAPIException(MarketScannerException):
     """Raised when exchange API calls fail"""
     pass
 
-class DataValidationException(TradingBotException):
+class DataValidationException(MarketScannerException):
     """Raised when data validation fails"""
     pass
 
-class ConfigurationException(TradingBotException):
+class ConfigurationException(MarketScannerException):
     """Raised when configuration is invalid"""
     pass
 
-# Circuit Breaker Pattern
-class CircuitBreaker:
-    def __init__(self, failure_threshold: int = None, timeout: int = None):
-        self.failure_threshold = failure_threshold or config.CIRCUIT_BREAKER_FAILURE_THRESHOLD
-        self.timeout = timeout or config.CIRCUIT_BREAKER_TIMEOUT
-        self.failure_count = 0
-        self.last_failure_time = None
-        self.state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
+# Simple Retry Helper
+class SimpleRetry:
+    def __init__(self, max_retries: int = None, retry_delay: int = None):
+        self.max_retries = max_retries or config.MAX_RETRIES
+        self.retry_delay = retry_delay or config.RETRY_DELAY
 
-    def call_succeeded(self):
-        """Reset circuit breaker on successful call"""
-        self.failure_count = 0
-        self.state = "CLOSED"
-
-    def call_failed(self):
-        """Increment failure count and potentially open circuit"""
-        self.failure_count += 1
-        self.last_failure_time = time.time()
-        if self.failure_count >= self.failure_threshold:
-            self.state = "OPEN"
-            logging.warning(f"Circuit breaker opened after {self.failure_count} failures")
-
-    def can_call(self) -> bool:
-        """Check if calls are allowed through circuit breaker"""
-        if self.state == "OPEN":
-            if time.time() - self.last_failure_time > self.timeout:
-                self.state = "HALF_OPEN"
-                logging.info("Circuit breaker moved to HALF_OPEN state")
-                return True
-            return False
-        return True
+    async def run(self, coro):
+        """Execute coroutine with retry logic"""
+        last_exception = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                return await coro()
+            except Exception as e:
+                last_exception = e
+                if attempt == self.max_retries:
+                    raise last_exception
+                delay = self.retry_delay * attempt + random.uniform(0, 1)
+                await asyncio.sleep(delay)
+        raise last_exception
 
 # Data Validation Functions
 def validate_ohlcv_data(df: pd.DataFrame) -> bool:
@@ -159,7 +145,7 @@ def validate_symbol_list(symbols: List[str]) -> List[str]:
     
     return valid_symbols
 
-# Async Proxy Pool
+# Async Proxy Pool (Simplified)
 class AsyncProxyPool:
     def __init__(self, max_pool_size: int = None, proxy_check_interval: int = None, max_failures: int = None):
         self.max_pool_size = max_pool_size or config.PROXY_POOL_SIZE
@@ -172,24 +158,18 @@ class AsyncProxyPool:
         self.proxy_cycle = None
         self._stop_event = asyncio.Event()
         self._lock = asyncio.Lock()
-        self.circuit_breaker = CircuitBreaker()
 
     async def get_next_proxy(self) -> Optional[str]:
         """Get next available proxy from pool"""
-        if not self.circuit_breaker.can_call():
-            raise ProxyException("Circuit breaker is open - proxy pool unavailable")
-
         async with self._lock:
             if not self.proxies:
                 logging.warning("Proxy pool empty when requesting next proxy")
-                self.circuit_breaker.call_failed()
                 return None
             
             for _ in range(len(self.proxies)):
                 try:
                     proxy = next(self.proxy_cycle)
                     if proxy not in self.failed_proxies:
-                        self.circuit_breaker.call_succeeded()
                         return proxy
                 except (StopIteration, TypeError):
                     # Recreate cycle if needed
@@ -197,11 +177,9 @@ class AsyncProxyPool:
                     if self.proxy_cycle:
                         proxy = next(self.proxy_cycle)
                         if proxy not in self.failed_proxies:
-                            self.circuit_breaker.call_succeeded()
                             return proxy
             
             logging.warning("All proxies in pool are marked as failed")
-            self.circuit_breaker.call_failed()
             return None
 
     async def mark_proxy_failure(self, proxy: str):
@@ -235,14 +213,8 @@ class AsyncProxyPool:
                 self.proxy_cycle = itertools.cycle(self.proxies) if self.proxies else None
                 logging.info(f"Proxy pool filled with {len(self.proxies)} working proxies from URL")
                 
-            if self.proxies:
-                self.circuit_breaker.call_succeeded()
-            else:
-                self.circuit_breaker.call_failed()
-                
         except Exception as e:
             logging.error(f"Failed to populate proxy pool: {e}")
-            self.circuit_breaker.call_failed()
             raise ProxyException(f"Failed to populate proxy pool: {e}")
 
     async def start_checker(self):
@@ -392,12 +364,12 @@ class AsyncProxyPool:
         """Stop the proxy pool"""
         self._stop_event.set()
 
-# Base Async Exchange Client
+# Base Async Exchange Client (Simplified)
 class BaseAsyncExchangeClient:
     def __init__(self, session: aiohttp.ClientSession, proxy_pool: AsyncProxyPool):
         self.session = session
         self.proxy_pool = proxy_pool
-        self.circuit_breaker = CircuitBreaker()
+        self.retry_helper = SimpleRetry()
 
     async def _get_proxy(self) -> str:
         """Get working proxy from pool"""
@@ -406,18 +378,14 @@ class BaseAsyncExchangeClient:
             raise ProxyException("No working proxies available")
         return proxy
 
-    async def _make_request(self, url: str, params: dict = None, max_retries: int = None) -> dict:
+    async def _make_request(self, url: str, params: dict = None) -> dict:
         """Make HTTP request with retry logic and proxy rotation"""
-        max_retries = max_retries or config.MAX_RETRIES
         
-        for attempt in range(1, max_retries + 1):
-            if not self.circuit_breaker.can_call():
-                raise ExchangeAPIException("Circuit breaker is open")
-
+        async def attempt_request():
+            proxy = await self._get_proxy()
+            timeout = aiohttp.ClientTimeout(total=config.REQUEST_TIMEOUT)
+            
             try:
-                proxy = await self._get_proxy()
-                timeout = aiohttp.ClientTimeout(total=config.REQUEST_TIMEOUT)
-                
                 async with self.session.get(
                     url, 
                     params=params, 
@@ -426,26 +394,12 @@ class BaseAsyncExchangeClient:
                 ) as response:
                     response.raise_for_status()
                     data = await response.json()
-                    self.circuit_breaker.call_succeeded()
                     return data
-                    
-            except ProxyException:
-                self.circuit_breaker.call_failed()
-                raise
-            except aiohttp.ClientError as e:
-                logging.warning(f"Attempt {attempt} failed: {e}")
-                self.circuit_breaker.call_failed()
-                if 'proxy' in locals():
-                    await self.proxy_pool.mark_proxy_failure(proxy)
             except Exception as e:
-                logging.warning(f"Attempt {attempt} unexpected error: {e}")
-                self.circuit_breaker.call_failed()
-                
-            if attempt < max_retries:
-                delay = config.RETRY_DELAY * attempt + random.uniform(0, 1)
-                await asyncio.sleep(delay)
-
-        raise ExchangeAPIException(f"All {max_retries} attempts failed for {url}")
+                await self.proxy_pool.mark_proxy_failure(proxy)
+                raise
+        
+        return await self.retry_helper.run(attempt_request)
 
 # Async Binance Client
 class AsyncBinanceClient(BaseAsyncExchangeClient):
@@ -866,7 +820,7 @@ async def main():
         format='%(asctime)s %(levelname)s %(message)s',
         handlers=[
             logging.StreamHandler(),
-            logging.FileHandler('trading_bot.log')
+            logging.FileHandler('market_scanner.log')
         ]
     )
     
@@ -898,7 +852,7 @@ async def main():
         async with aiohttp.ClientSession(
             connector=connector,
             timeout=timeout,
-            headers={'User-Agent': 'TradingBot/1.0'}
+            headers={'User-Agent': 'MarketScanner/1.0'}
         ) as session:
             
             # Initialize exchange clients
