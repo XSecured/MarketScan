@@ -567,8 +567,8 @@ async def main():
     failed_scans = 0
 
     def scan_symbol(exchange_name, client, symbol, perp_set, spot_set):
-        nonlocal total_scans, successful_scans, failed_scans
-        nonlocal binance_scanned, binance_price_matches, binance_same_color_filtered, binance_touched_filtered
+        global total_scans, successful_scans, failed_scans
+        global binance_scanned, binance_price_matches, binance_same_color_filtered, binance_touched_filtered
         
         with lock:
             total_scans += 1
