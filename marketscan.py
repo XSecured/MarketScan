@@ -13,7 +13,6 @@ from tqdm import tqdm
 import re
 from datetime import datetime, timezone, timedelta
 import json
-import websocket
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
