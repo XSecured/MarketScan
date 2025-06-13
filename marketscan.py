@@ -79,107 +79,221 @@ def load_levels_from_file(filename="detected_levels.json"):
         logging.error(f"Failed to load previous levels: {e}")
         return {}
 
-# --- WebSocket Price Collection with Existing Proxy System ---
+# --- Enhanced WebSocket with Completion-Based Collection ---
 
-async def get_binance_prices_websocket(symbols, proxy_url, timeout=10):
-    """Get Binance prices via WebSocket using existing proxy system"""
+async def get_binance_prices_until_complete(symbols, proxy_url, target_completion=0.95, max_time=300):
+    """Keep collecting Binance prices until target completion rate achieved"""
     prices = {}
+    symbols_needed = set(symbols)
     
     if not symbols or not proxy_url:
         return prices
     
     try:
-        # Install required: pip install websockets-proxy
-        from websockets_proxy import Proxy, proxy_connect
-        
-        # Create proxy object
         proxy = Proxy.from_url(proxy_url)
         
-        # Create WebSocket stream for multiple symbols (limit to 100)
-        symbols_batch = symbols[:100]
-        stream = "/".join([f"{symbol.lower()}@ticker" for symbol in symbols_batch])
-        url = f"wss://stream.binance.com:9443/ws/{stream}"
+        # Process in batches due to Binance 100-symbol limit
+        symbol_batches = [symbols[i:i+100] for i in range(0, len(symbols), 100)]
         
-        logging.info(f"Connecting to Binance WebSocket via proxy")
-        
-        async with proxy_connect(url, proxy=proxy) as websocket:
-            # Set a timeout for data collection
-            start_time = time.time()
+        for batch_idx, batch in enumerate(symbol_batches):
+            logging.info(f"Processing Binance batch {batch_idx + 1}/{len(symbol_batches)} ({len(batch)} symbols)")
             
-            while time.time() - start_time < timeout:
-                try:
-                    # Wait for message with timeout
-                    message = await asyncio.wait_for(websocket.recv(), timeout=1.0)
-                    data = json.loads(message)
+            stream = "/".join([f"{symbol.lower()}@ticker" for symbol in batch])
+            url = f"wss://stream.binance.com:9443/ws/{stream}"
+            
+            batch_symbols_needed = set(batch)
+            batch_collected = 0
+            target_for_batch = int(len(batch) * target_completion)
+            
+            try:
+                async with proxy_connect(url, proxy=proxy) as websocket:
+                    start_time = time.time()
+                    last_ping = time.time()
+                    no_new_data_count = 0
                     
-                    if isinstance(data, list):
-                        # Handle multiple symbols
-                        for item in data:
-                            if 'c' in item and 's' in item:
-                                symbol = item['s'].upper()
-                                price = float(item['c'])
-                                prices[f"binance_{symbol}"] = price
-                    elif 'c' in data and 's' in data:
-                        # Single symbol
-                        symbol = data['s'].upper()
-                        price = float(data['c'])
-                        prices[f"binance_{symbol}"] = price
+                    logging.info(f"Batch {batch_idx + 1}: Target {target_for_batch}/{len(batch)} symbols")
                     
-                    # If we got most of our symbols, break early
-                    if len(prices) >= len(symbols_batch) * 0.7:
-                        break
+                    while (batch_collected < target_for_batch and 
+                           time.time() - start_time < max_time and 
+                           no_new_data_count < 30):  # 30 iterations without new data = stop
                         
-                except asyncio.TimeoutError:
-                    # No new messages, continue collecting
-                    continue
-                except Exception as e:
-                    logging.warning(f"WebSocket message error: {e}")
-                    break
+                        try:
+                            # Send ping every 30 seconds to keep connection alive
+                            if time.time() - last_ping > 30:
+                                await websocket.ping()
+                                last_ping = time.time()
+                                logging.debug(f"Sent ping for batch {batch_idx + 1}")
+                            
+                            message = await asyncio.wait_for(websocket.recv(), timeout=5.0)
+                            data = json.loads(message)
+                            
+                            new_data_received = False
+                            
+                            if isinstance(data, list):
+                                for item in data:
+                                    if 'c' in item and 's' in item:
+                                        symbol = item['s'].lower()
+                                        if symbol in batch_symbols_needed:
+                                            price_key = f"binance_{item['s'].upper()}"
+                                            if price_key not in prices:
+                                                prices[price_key] = float(item['c'])
+                                                batch_symbols_needed.discard(symbol)
+                                                batch_collected += 1
+                                                new_data_received = True
+                                                
+                                                if batch_collected % 10 == 0:
+                                                    logging.info(f"Batch {batch_idx + 1}: {batch_collected}/{len(batch)} collected")
+                                                    
+                            elif 'c' in data and 's' in data:
+                                symbol = data['s'].lower()
+                                if symbol in batch_symbols_needed:
+                                    price_key = f"binance_{data['s'].upper()}"
+                                    if price_key not in prices:
+                                        prices[price_key] = float(data['c'])
+                                        batch_symbols_needed.discard(symbol)
+                                        batch_collected += 1
+                                        new_data_received = True
+                            
+                            # Reset no new data counter if we got new data
+                            if new_data_received:
+                                no_new_data_count = 0
+                            else:
+                                no_new_data_count += 1
+                            
+                            # Small delay to prevent overwhelming
+                            await asyncio.sleep(0.05)
+                            
+                        except asyncio.TimeoutError:
+                            no_new_data_count += 1
+                            continue
+                        except Exception as e:
+                            logging.warning(f"Batch {batch_idx + 1} message error: {e}")
+                            no_new_data_count += 1
                     
+                    completion_rate = batch_collected / len(batch)
+                    logging.info(f"Batch {batch_idx + 1}: {batch_collected}/{len(batch)} collected ({completion_rate:.1%})")
+                    
+            except Exception as e:
+                logging.warning(f"Batch {batch_idx + 1} connection failed: {e}")
+            
+            # Brief pause between batches
+            if batch_idx < len(symbol_batches) - 1:
+                await asyncio.sleep(2)
+                
     except Exception as e:
-        logging.warning(f"Binance WebSocket connection failed: {e}")
+        logging.warning(f"Binance WebSocket failed: {e}")
     
-    logging.info(f"Collected {len(prices)} Binance prices via WebSocket")
+    total_collected = len([k for k in prices.keys() if k.startswith('binance_')])
+    completion_rate = total_collected / len(symbols) if symbols else 0
+    logging.info(f"Binance final: {total_collected}/{len(symbols)} symbols ({completion_rate:.1%})")
+    
     return prices
 
-async def get_bybit_prices_rest_async(symbols, proxy_url):
-    """Get Bybit prices via async REST"""
+async def get_bybit_prices_until_complete(symbols, proxy_url, target_completion=0.95, max_time=300):
+    """Keep collecting Bybit prices until target completion rate achieved"""
     prices = {}
+    symbols_needed = set(symbols)
     
     if not symbols or not proxy_url:
         return prices
     
     try:
-        import aiohttp
+        proxy = Proxy.from_url(proxy_url)
+        url = "wss://stream.bybit.com/v5/public/linear"
         
-        connector = aiohttp.ProxyConnector.from_url(proxy_url)
-        timeout = aiohttp.ClientTimeout(total=8)
+        # Bybit can handle more symbols in one connection
+        symbols_batch = symbols[:500]  # Increased limit
+        target_collected = int(len(symbols_batch) * target_completion)
         
-        async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
-            url = "https://api.bybit.com/v5/market/tickers"
-            params = {"category": "linear"}
+        logging.info(f"Bybit: Target {target_collected}/{len(symbols_batch)} symbols")
+        
+        async with proxy_connect(url, proxy=proxy) as websocket:
+            # Subscribe to tickers
+            subscribe_msg = {
+                "op": "subscribe",
+                "args": [f"tickers.{symbol}" for symbol in symbols_batch]
+            }
             
-            async with session.get(url, params=params) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    if "result" in data and "list" in data["result"]:
-                        symbol_set = set(symbols)
+            await websocket.send(json.dumps(subscribe_msg))
+            
+            start_time = time.time()
+            last_ping = time.time()
+            collected_count = 0
+            no_new_data_count = 0
+            subscription_confirmed = False
+            
+            while (collected_count < target_collected and 
+                   time.time() - start_time < max_time and 
+                   no_new_data_count < 50):  # More patience for Bybit
+                
+                try:
+                    # Send ping every 30 seconds
+                    if time.time() - last_ping > 30:
+                        ping_msg = {"op": "ping"}
+                        await websocket.send(json.dumps(ping_msg))
+                        last_ping = time.time()
+                        logging.debug("Sent Bybit ping")
+                    
+                    message = await asyncio.wait_for(websocket.recv(), timeout=10.0)
+                    data = json.loads(message)
+                    
+                    new_data_received = False
+                    
+                    # Handle subscription confirmation
+                    if data.get("success") and data.get("op") == "subscribe":
+                        if not subscription_confirmed:
+                            logging.info("Bybit WebSocket subscription confirmed")
+                            subscription_confirmed = True
+                        continue
+                    
+                    # Handle pong response
+                    if data.get("op") == "pong":
+                        logging.debug("Received Bybit pong")
+                        continue
+                    
+                    # Handle ticker data
+                    if data.get("topic", "").startswith("tickers.") and "data" in data:
+                        ticker_data = data["data"]
+                        symbol = ticker_data.get("symbol", "").upper()
+                        last_price = ticker_data.get("lastPrice")
                         
-                        for item in data["result"]["list"]:
-                            symbol = item['symbol'].upper()
-                            if symbol in symbol_set:
-                                prices[f"bybit_{symbol}"] = float(item['lastPrice'])
+                        if symbol and last_price and symbol in symbols_needed:
+                            price_key = f"bybit_{symbol}"
+                            if price_key not in prices:
+                                prices[price_key] = float(last_price)
+                                symbols_needed.discard(symbol)
+                                collected_count += 1
+                                new_data_received = True
                                 
+                                if collected_count % 20 == 0:
+                                    logging.info(f"Bybit: {collected_count}/{len(symbols_batch)} collected")
+                    
+                    # Reset counter if new data received
+                    if new_data_received:
+                        no_new_data_count = 0
+                    else:
+                        no_new_data_count += 1
+                    
+                    await asyncio.sleep(0.02)  # Small delay
+                    
+                except asyncio.TimeoutError:
+                    no_new_data_count += 1
+                    continue
+                except Exception as e:
+                    logging.warning(f"Bybit WebSocket message error: {e}")
+                    no_new_data_count += 1
+                    
     except Exception as e:
-        logging.warning(f"Bybit REST request failed: {e}")
+        logging.warning(f"Bybit WebSocket connection failed: {e}")
     
-    logging.info(f"Collected {len(prices)} Bybit prices via REST")
+    completion_rate = collected_count / len(symbols) if symbols else 0
+    logging.info(f"Bybit final: {collected_count}/{len(symbols)} symbols ({completion_rate:.1%})")
+    
     return prices
 
-async def collect_prices_websocket_with_proxy_pool(levels, proxy_pool):
-    """Fast price collection using WebSocket + proven proxy system"""
+async def collect_prices_until_complete(levels, proxy_pool, target_completion=0.95):
+    """Collect prices until target completion rate with no arbitrary time limits"""
     
-    # Get the first working proxy from your proven system
     proxy = proxy_pool.get_next_proxy()
     if not proxy:
         logging.error("No working proxy available")
@@ -198,21 +312,21 @@ async def collect_prices_websocket_with_proxy_pool(levels, proxy_pool):
         elif exchange == "bybit":
             bybit_symbols.append(symbol.upper())
     
-    logging.info(f"Collecting prices for {len(binance_symbols)} Binance + {len(bybit_symbols)} Bybit symbols...")
+    logging.info(f"Target: {target_completion:.0%} completion rate")
+    logging.info(f"Symbols: {len(binance_symbols)} Binance + {len(bybit_symbols)} Bybit")
     
     start_time = time.time()
     
-    # Run both exchanges concurrently
+    # Run both exchanges concurrently until completion
     tasks = []
     if binance_symbols:
-        tasks.append(get_binance_prices_websocket(binance_symbols, proxy))
+        tasks.append(get_binance_prices_until_complete(binance_symbols, proxy, target_completion))
     if bybit_symbols:
-        tasks.append(get_bybit_prices_rest_async(bybit_symbols, proxy))
+        tasks.append(get_bybit_prices_until_complete(bybit_symbols, proxy, target_completion))
     
     if not tasks:
         return {}
     
-    # Wait for both to complete
     results = await asyncio.gather(*tasks, return_exceptions=True)
     
     all_prices = {}
@@ -223,15 +337,17 @@ async def collect_prices_websocket_with_proxy_pool(levels, proxy_pool):
             logging.warning(f"Task failed: {result}")
     
     elapsed_time = time.time() - start_time
-    logging.info(f"Collected {len(all_prices)} prices in {elapsed_time:.1f}s using WebSocket + REST")
+    total_symbols = len(binance_symbols) + len(bybit_symbols)
+    final_completion = len(all_prices) / total_symbols if total_symbols > 0 else 0
+    
+    logging.info(f"FINAL RESULTS: {len(all_prices)}/{total_symbols} symbols ({final_completion:.1%}) in {elapsed_time:.1f}s")
     
     return all_prices
 
-async def check_level_hits_websocket_fast(levels, proxy_pool):
-    """Fast level hit checking using WebSocket with existing proxy system"""
+async def check_level_hits_complete(levels, proxy_pool):
+    """Level hit checking with completion-based collection"""
     
-    # FIXED: Directly await instead of creating new event loop
-    current_prices = await collect_prices_websocket_with_proxy_pool(levels, proxy_pool)
+    current_prices = await collect_prices_until_complete(levels, proxy_pool, target_completion=0.90)
     
     hits = []
     
@@ -245,8 +361,7 @@ async def check_level_hits_websocket_fast(levels, proxy_pool):
                 current_price = current_prices[price_key]
                 level_price = level_info["price"]
                 
-                # Check if current price is very close to level (within 0.2% tolerance)
-                tolerance = level_price * 0.002  # 0.2% tolerance
+                tolerance = level_price * 0.002
                 if abs(current_price - level_price) <= tolerance:
                     hits.append({
                         "exchange": level_info["exchange"],
@@ -946,26 +1061,24 @@ async def main():
     bot = Bot(token=TELEGRAM_TOKEN)
     
     if run_mode == "price_check":
-        # QUICK MODE: Check level hits using WebSocket with existing proxy system
-        logging.info("🔍 Quick price check mode - using WebSocket with proven proxy system...")
+        # COMPLETION-BASED MODE: Keep running until 90%+ success rate
+        logging.info("🔍 Completion-based price check - targeting 90%+ success rate...")
     
         levels = load_levels_from_file()
         if not levels:
             logging.info("No levels to check, skipping...")
             return
     
-        # Use your existing proven proxy system
         proxy_url = os.getenv("PROXY_LIST_URL")
         if not proxy_url:
             logging.error("PROXY_LIST_URL environment variable not set")
             return
 
-        # Create small proxy pool using your proven system
-        proxy_pool = ProxyPool(max_pool_size=3)  # Just need a few working proxies
+        proxy_pool = ProxyPool(max_pool_size=3)
         proxy_pool.populate_from_url(proxy_url)
     
-        # FIXED: Properly await the async function
-        hits = await check_level_hits_websocket_fast(levels, proxy_pool)
+        # Use completion-based checking
+        hits = await check_level_hits_complete(levels, proxy_pool)
     
         if hits:
             logging.info(f"🚨 Found {len(hits)} level hits!")
