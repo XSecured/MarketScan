@@ -12,6 +12,9 @@ import random
 from tqdm import tqdm
 import re
 from datetime import datetime, timezone, timedelta
+import json
+import websocket
+from pathlib import Path
 
 # List of symbols to ignore in all scanning
 IGNORED_SYMBOLS = {
@@ -20,6 +23,283 @@ IGNORED_SYMBOLS = {
     "USDYUSDT", "USDRUSDT", "ETH3LUSDT", "ETHUSDT-27MAR26", 
     "ETHUSDT-27JUN25", "ETHUSDT-26DEC25", "ETHUSDT-26SEP25"
 }
+
+# Global variables for WebSocket
+websocket_data = {}
+websocket_complete = threading.Event()
+
+# --- Level Persistence Functions ---
+
+def save_levels_to_file(results, binance_client, bybit_client, filename="detected_levels.json"):
+    """Save detected levels to JSON file in repo"""
+    levels_data = {
+        "last_updated": datetime.now(timezone.utc).isoformat(),
+        "levels": {}
+    }
+    
+    for exchange, symbol, market, interval, signal_type in results:
+        key = f"{exchange}_{symbol}_{market}_{interval}"
+        try:
+            # Get the actual price level for this result
+            client = binance_client if exchange == "Binance" else bybit_client
+            df = client.fetch_ohlcv(symbol, interval, limit=3, market=market)
+            equal_price, _ = check_equal_price_and_classify(df)
+            
+            if equal_price is not None:
+                levels_data["levels"][key] = {
+                    "exchange": exchange,
+                    "symbol": symbol,
+                    "market": market,
+                    "interval": interval,
+                    "price": float(equal_price),
+                    "signal_type": signal_type,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+        except Exception as e:
+            logging.warning(f"Failed to get price for {key}: {e}")
+    
+    # Save to file
+    with open(filename, "w") as f:
+        json.dump(levels_data, f, indent=2)
+    
+    logging.info(f"Saved {len(levels_data['levels'])} levels to {filename}")
+
+def load_levels_from_file(filename="detected_levels.json"):
+    """Load previously detected levels from JSON file"""
+    try:
+        if os.path.exists(filename):
+            with open(filename, "r") as f:
+                data = json.load(f)
+            levels = data.get("levels", {})
+            last_updated = data.get("last_updated", "Unknown")
+            logging.info(f"Loaded {len(levels)} levels from {last_updated}")
+            return levels
+        else:
+            logging.info("No previous levels file found")
+            return {}
+    except Exception as e:
+        logging.error(f"Failed to load previous levels: {e}")
+        return {}
+
+# --- WebSocket Price Checking ---
+
+def on_binance_message(ws, message):
+    """Handle Binance WebSocket messages"""
+    try:
+        data = json.loads(message)
+        if isinstance(data, list):
+            # Handle multiple symbols in one stream
+            for item in data:
+                if 'c' in item and 's' in item:  # Current price and symbol
+                    symbol = item['s'].upper()
+                    price = float(item['c'])
+                    websocket_data[f"binance_{symbol}"] = price
+        elif 'c' in data and 's' in data:  # Single symbol
+            symbol = data['s'].upper()
+            price = float(data['c'])
+            websocket_data[f"binance_{symbol}"] = price
+    except Exception as e:
+        logging.warning(f"Error processing Binance message: {e}")
+
+def on_bybit_message(ws, message):
+    """Handle Bybit WebSocket messages"""
+    try:
+        data = json.loads(message)
+        if 'data' in data:
+            for item in data['data']:
+                if 'symbol' in item and 'lastPrice' in item:
+                    symbol = item['symbol'].upper()
+                    price = float(item['lastPrice'])
+                    websocket_data[f"bybit_{symbol}"] = price
+    except Exception as e:
+        logging.warning(f"Error processing Bybit message: {e}")
+
+def collect_prices_via_websocket(levels, timeout=30):
+    """Collect current prices for all symbols via WebSocket"""
+    global websocket_data, websocket_complete
+    
+    websocket_data.clear()
+    websocket_complete.clear()
+    
+    # Get unique symbols we need
+    needed_symbols = set()
+    binance_symbols = []
+    bybit_symbols = []
+    
+    for level_info in levels.values():
+        exchange = level_info["exchange"].lower()
+        symbol = level_info["symbol"]
+        needed_symbols.add(f"{exchange}_{symbol}")
+        
+        if exchange == "binance":
+            binance_symbols.append(symbol.lower())
+        elif exchange == "bybit":
+            bybit_symbols.append(symbol.upper())
+    
+    if not needed_symbols:
+        return {}
+    
+    logging.info(f"Collecting prices for {len(needed_symbols)} symbols via WebSocket...")
+    
+    # Create WebSocket connections
+    connections = []
+    websocket_threads = []
+    
+    # Binance connection for multiple symbols
+    if binance_symbols:
+        # Limit to 100 symbols per stream (Binance limit)
+        binance_symbols_batch = binance_symbols[:100]
+        binance_stream = "/".join([f"{symbol}@ticker" for symbol in binance_symbols_batch])
+        binance_url = f"wss://stream.binance.com:9443/ws/{binance_stream}"
+        
+        def run_binance():
+            try:
+                ws = websocket.WebSocketApp(binance_url, on_message=on_binance_message)
+                ws.run_forever()
+            except Exception as e:
+                logging.warning(f"Binance WebSocket error: {e}")
+        
+        binance_thread = threading.Thread(target=run_binance, daemon=True)
+        binance_thread.start()
+        websocket_threads.append(binance_thread)
+    
+    # Bybit connection (using ticker stream)
+    if bybit_symbols:
+        def run_bybit():
+            try:
+                # Subscribe to all symbols
+                symbols_str = ",".join([f'"{symbol}"' for symbol in bybit_symbols[:50]])  # Limit for practicality
+                subscribe_msg = {
+                    "op": "subscribe",
+                    "args": [f"tickers.{symbol}" for symbol in bybit_symbols[:50]]
+                }
+                
+                def on_open(ws):
+                    ws.send(json.dumps(subscribe_msg))
+                
+                ws = websocket.WebSocketApp("wss://stream.bybit.com/v5/public/linear", 
+                                          on_message=on_bybit_message, 
+                                          on_open=on_open)
+                ws.run_forever()
+            except Exception as e:
+                logging.warning(f"Bybit WebSocket error: {e}")
+        
+        bybit_thread = threading.Thread(target=run_bybit, daemon=True)
+        bybit_thread.start()
+        websocket_threads.append(bybit_thread)
+    
+    # Wait for data collection
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        collected_count = len([k for k in websocket_data.keys() if any(needed in k for needed in needed_symbols)])
+        if collected_count >= len(needed_symbols) * 0.6:  # Got 60% of needed data
+            break
+        time.sleep(1)
+    
+    logging.info(f"Collected {len(websocket_data)} price points via WebSocket in {time.time() - start_time:.1f}s")
+    return dict(websocket_data)
+
+def check_level_hits_websocket(levels):
+    """Check level hits using WebSocket prices"""
+    current_prices = collect_prices_via_websocket(levels)
+    hits = []
+    
+    for key, level_info in levels.items():
+        try:
+            exchange = level_info["exchange"].lower()
+            symbol = level_info["symbol"]
+            price_key = f"{exchange}_{symbol}"
+            
+            if price_key in current_prices:
+                current_price = current_prices[price_key]
+                level_price = level_info["price"]
+                
+                # Check if current price is very close to level (within 0.2% tolerance)
+                tolerance = level_price * 0.002  # 0.2% tolerance
+                if abs(current_price - level_price) <= tolerance:
+                    hits.append({
+                        "exchange": level_info["exchange"],
+                        "symbol": symbol,
+                        "market": level_info["market"],
+                        "interval": level_info["interval"],
+                        "signal_type": level_info["signal_type"],
+                        "level_price": level_price,
+                        "current_price": current_price,
+                        "original_timestamp": level_info["timestamp"]
+                    })
+                    
+        except Exception as e:
+            logging.warning(f"Failed to check level hit for {key}: {e}")
+    
+    return hits
+
+def create_alerts_telegram_report(hits):
+    """Create telegram message for level hits/alerts"""
+    if not hits:
+        return []
+    
+    # Get timestamp
+    utc_now = datetime.now(timezone.utc)
+    utc_plus_3 = timezone(timedelta(hours=3))
+    current_time = utc_now.astimezone(utc_plus_3)
+    timestamp = current_time.strftime("%Y-%m-%d %H:%M:%S UTC+3")
+    
+    # Group by exchange and timeframe
+    exchanges = {}
+    for hit in hits:
+        exchange = hit["exchange"]
+        interval = hit["interval"]
+        
+        if exchange not in exchanges:
+            exchanges[exchange] = {}
+        if interval not in exchanges[exchange]:
+            exchanges[exchange][interval] = {"bullish": [], "bearish": []}
+        
+        exchanges[exchange][interval][hit["signal_type"]].append(hit)
+    
+    messages = []
+    
+    # Create header message
+    header = "🚨 *LEVEL ALERTS* 🚨\n\n"
+    header += f"⚡ {len(hits)} levels got hit!\n\n"
+    header += f"🕒 {timestamp}"
+    messages.append(header)
+    
+    # Create detailed messages
+    for exchange in ["Binance", "Bybit"]:
+        if exchange not in exchanges:
+            continue
+            
+        for interval in ["1M", "1w", "1d"]:
+            if interval not in exchanges[exchange]:
+                continue
+                
+            current_msg = f"📅 *{interval} - {exchange}*\n\n"
+            
+            bullish_hits = exchanges[exchange][interval]["bullish"]
+            bearish_hits = exchanges[exchange][interval]["bearish"]
+            
+            if bullish_hits:
+                current_msg += f"🍏 *Bullish Alerts ({len(bullish_hits)})*\n"
+                for hit in bullish_hits:
+                    price_diff = abs(hit['current_price'] - hit['level_price'])
+                    price_diff_pct = (price_diff / hit['level_price']) * 100
+                    current_msg += f"• {hit['symbol']} @ ${hit['level_price']:.6f} (Current: ${hit['current_price']:.6f})\n"
+                current_msg += "\n"
+            
+            if bearish_hits:
+                current_msg += f"🔻 *Bearish Alerts ({len(bearish_hits)})*\n"
+                for hit in bearish_hits:
+                    price_diff = abs(hit['current_price'] - hit['level_price'])
+                    price_diff_pct = (price_diff / hit['level_price']) * 100
+                    current_msg += f"• {hit['symbol']} @ ${hit['level_price']:.6f} (Current: ${hit['current_price']:.6f})\n"
+                current_msg += "\n"
+            
+            if bullish_hits or bearish_hits:
+                current_msg += "——————————————————\n"
+                messages.append(current_msg)
+    
+    return messages
 
 # --- Normalization and Priority Functions ---
 
@@ -632,83 +912,118 @@ def create_beautiful_telegram_report(results):
 
 async def main():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
-
-    proxy_url = os.getenv("PROXY_LIST_URL")
-    if not proxy_url:
-        logging.error("PROXY_LIST_URL environment variable not set")
-        return
-
-    proxy_pool = ProxyPool(max_pool_size=25)
-    proxy_pool.populate_from_url(proxy_url)
-    proxy_pool.start_checker()
-
+    
+    # Determine run mode
+    run_mode = os.getenv("RUN_MODE", "full_scan")
+    logging.info(f"Running in {run_mode} mode")
+    
     TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
     TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
+    
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
         logging.error("Telegram environment variables not fully set")
         return
-
-    binance_client = BinanceClient(proxy_pool)
-    bybit_client = BybitClient(proxy_pool)
-
-    binance_perp_raw = set(binance_client.get_perp_symbols())
-    binance_spot_raw = set(binance_client.get_spot_symbols())
-    bybit_perp_raw = set(bybit_client.get_perp_symbols())
-    bybit_spot_raw = set(bybit_client.get_spot_symbols())
-
-    # Apply priority deduplication with USDT filtering
-    binance_perp, binance_spot, bybit_perp, bybit_spot = apply_priority(
-        binance_perp_raw, binance_spot_raw, bybit_perp_raw, bybit_spot_raw
-    )
-
-    # Apply ignored symbols filter
-    final_binance_perp = {s for s in binance_perp if s not in IGNORED_SYMBOLS}
-    final_binance_spot = {s for s in binance_spot if s not in IGNORED_SYMBOLS}
-    final_bybit_perp = {s for s in bybit_perp if s not in IGNORED_SYMBOLS}
-    final_bybit_spot = {s for s in bybit_spot if s not in IGNORED_SYMBOLS}
-
-    total_symbols = len(final_binance_perp) + len(final_binance_spot) + len(final_bybit_perp) + len(final_bybit_spot)
-    logging.info(f"Total symbols to scan after priority deduplication: {total_symbols}")
-
-    results = []
-    lock = threading.Lock()
-
-    def scan_symbol(exchange_name, client, symbol, perp_set, spot_set):
-        market = "perp" if symbol in perp_set else "spot"
-        for interval in ["1M", "1w", "1d"]:
-            try:
-                df = client.fetch_ohlcv(symbol, interval, limit=3, market=market)
-                equal_price, signal_type = check_equal_price_and_classify(df)
-            
-                if equal_price is not None and signal_type is not None:
-                    if not current_candle_touched_price(df, equal_price):
-                        with lock:
-                            results.append((exchange_name, symbol, market, interval, signal_type))
-            except Exception as e:
-                logging.warning(f"Failed {exchange_name} {symbol} {market} {interval}: {e}")
-
-    all_symbols = []
-    all_symbols.extend([("Binance", binance_client, sym, binance_perp_raw, binance_spot_raw) for sym in final_binance_perp])
-    all_symbols.extend([("Binance", binance_client, sym, binance_perp_raw, binance_spot_raw) for sym in final_binance_spot])
-    all_symbols.extend([("Bybit", bybit_client, sym, bybit_perp_raw, bybit_spot_raw) for sym in final_bybit_perp])
-    all_symbols.extend([("Bybit", bybit_client, sym, bybit_perp_raw, bybit_spot_raw) for sym in final_bybit_spot])
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=25) as executor:
-        futures = [executor.submit(scan_symbol, *args) for args in all_symbols]
-        for _ in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Scanning symbols"):
-            pass
-
-    # Create beautiful organized messages
-    messages = create_beautiful_telegram_report(results)
-
+    
     bot = Bot(token=TELEGRAM_TOKEN)
-    for msg in messages:
-        try:
-            await bot.send_message(chat_id=int(TELEGRAM_CHAT_ID), text=msg, parse_mode='Markdown')
-            logging.info("Telegram report sent successfully.")
-        except Exception as e:
-            logging.error(f"Failed to send Telegram message: {e}")
+    
+    if run_mode == "price_check":
+        # QUICK MODE: Only check if levels got hit via WebSocket
+        logging.info("🔍 Quick price check mode - checking level hits via WebSocket...")
+        
+        levels = load_levels_from_file()
+        if not levels:
+            logging.info("No levels to check, skipping...")
+            return
+        
+        hits = check_level_hits_websocket(levels)
+        
+        if hits:
+            logging.info(f"🚨 Found {len(hits)} level hits!")
+            alert_messages = create_alerts_telegram_report(hits)
+            for msg in alert_messages:
+                try:
+                    await bot.send_message(chat_id=int(TELEGRAM_CHAT_ID), text=msg, parse_mode='Markdown')
+                    await asyncio.sleep(1)  # Rate limiting
+                except Exception as e:
+                    logging.error(f"Failed to send alert: {e}")
+        else:
+            logging.info("✅ No level hits detected")
+    
+    else:
+        # FULL SCAN MODE: Do complete pattern detection
+        logging.info("🔍 Full scan mode - performing complete pattern detection...")
+        
+        proxy_url = os.getenv("PROXY_LIST_URL")
+        if not proxy_url:
+            logging.error("PROXY_LIST_URL environment variable not set")
+            return
+
+        proxy_pool = ProxyPool(max_pool_size=25)
+        proxy_pool.populate_from_url(proxy_url)
+        proxy_pool.start_checker()
+
+        binance_client = BinanceClient(proxy_pool)
+        bybit_client = BybitClient(proxy_pool)
+
+        binance_perp_raw = set(binance_client.get_perp_symbols())
+        binance_spot_raw = set(binance_client.get_spot_symbols())
+        bybit_perp_raw = set(bybit_client.get_perp_symbols())
+        bybit_spot_raw = set(bybit_client.get_spot_symbols())
+
+        # Apply priority deduplication with USDT filtering
+        binance_perp, binance_spot, bybit_perp, bybit_spot = apply_priority(
+            binance_perp_raw, binance_spot_raw, bybit_perp_raw, bybit_spot_raw
+        )
+
+        # Apply ignored symbols filter
+        final_binance_perp = {s for s in binance_perp if s not in IGNORED_SYMBOLS}
+        final_binance_spot = {s for s in binance_spot if s not in IGNORED_SYMBOLS}
+        final_bybit_perp = {s for s in bybit_perp if s not in IGNORED_SYMBOLS}
+        final_bybit_spot = {s for s in bybit_spot if s not in IGNORED_SYMBOLS}
+
+        total_symbols = len(final_binance_perp) + len(final_binance_spot) + len(final_bybit_perp) + len(final_bybit_spot)
+        logging.info(f"Total symbols to scan after priority deduplication: {total_symbols}")
+
+        results = []
+        lock = threading.Lock()
+
+        def scan_symbol(exchange_name, client, symbol, perp_set, spot_set):
+            market = "perp" if symbol in perp_set else "spot"
+            for interval in ["1M", "1w", "1d"]:
+                try:
+                    df = client.fetch_ohlcv(symbol, interval, limit=3, market=market)
+                    equal_price, signal_type = check_equal_price_and_classify(df)
+                
+                    if equal_price is not None and signal_type is not None:
+                        if not current_candle_touched_price(df, equal_price):
+                            with lock:
+                                results.append((exchange_name, symbol, market, interval, signal_type))
+                except Exception as e:
+                    logging.warning(f"Failed {exchange_name} {symbol} {market} {interval}: {e}")
+
+        all_symbols = []
+        all_symbols.extend([("Binance", binance_client, sym, binance_perp_raw, binance_spot_raw) for sym in final_binance_perp])
+        all_symbols.extend([("Binance", binance_client, sym, binance_perp_raw, binance_spot_raw) for sym in final_binance_spot])
+        all_symbols.extend([("Bybit", bybit_client, sym, bybit_perp_raw, bybit_spot_raw) for sym in final_bybit_perp])
+        all_symbols.extend([("Bybit", bybit_client, sym, bybit_perp_raw, bybit_spot_raw) for sym in final_bybit_spot])
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=25) as executor:
+            futures = [executor.submit(scan_symbol, *args) for args in all_symbols]
+            for _ in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Scanning symbols"):
+                pass
+
+        # Send normal scanning results
+        messages = create_beautiful_telegram_report(results)
+        for msg in messages:
+            try:
+                await bot.send_message(chat_id=int(TELEGRAM_CHAT_ID), text=msg, parse_mode='Markdown')
+                await asyncio.sleep(1)  # Rate limiting
+            except Exception as e:
+                logging.error(f"Failed to send Telegram message: {e}")
+
+        # Save current results for next run
+        save_levels_to_file(results, binance_client, bybit_client)
+        logging.info("Saved current levels for next run")
 
 if __name__ == "__main__":
     import asyncio
