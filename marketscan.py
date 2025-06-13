@@ -15,6 +15,7 @@ from datetime import datetime, timezone, timedelta
 import json
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import random
 
 
 # List of symbols to ignore in all scanning
@@ -78,10 +79,10 @@ def load_levels_from_file(filename="detected_levels.json"):
         logging.error(f"Failed to load previous levels: {e}")
         return {}
 
-# --- Fast Proxy Selection and Price Collection ---
+# --- Enhanced Price Collection with Retry Logic ---
 
-def test_proxy_speed_for_exchanges(proxy, timeout=5):
-    """Test proxy speed for both Binance and Bybit APIs"""
+def test_proxy_speed_for_exchanges(proxy, timeout=8):
+    """Test proxy speed for both Binance and Bybit APIs with longer timeout"""
     try:
         proxies = {"http": proxy, "https": proxy}
         
@@ -121,9 +122,9 @@ def test_proxy_speed_for_exchanges(proxy, timeout=5):
     except Exception as e:
         return None
 
-def find_fastest_working_proxy(proxy_pool, max_test=10):
+def find_fastest_working_proxy(proxy_pool, max_test=5):
     """Find the fastest working proxy for both exchanges"""
-    proxies_to_test = proxy_pool.proxies[:max_test]  # Test first 10 proxies
+    proxies_to_test = proxy_pool.proxies[:max_test]  # Test fewer proxies for speed
     
     if not proxies_to_test:
         logging.error("No proxies available to test")
@@ -132,7 +133,7 @@ def find_fastest_working_proxy(proxy_pool, max_test=10):
     logging.info(f"Testing {len(proxies_to_test)} proxies for speed...")
     
     results = []
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=5) as executor:
         future_to_proxy = {
             executor.submit(test_proxy_speed_for_exchanges, proxy): proxy 
             for proxy in proxies_to_test
@@ -154,37 +155,80 @@ def find_fastest_working_proxy(proxy_pool, max_test=10):
     logging.info(f"Fastest proxy: {fastest['proxy']} (avg: {fastest['avg_response_time']:.2f}s)")
     return fastest['proxy']
 
-def get_binance_prices_batch(symbols, proxy, batch_size=100):
-    """Get Binance prices in batches using ticker/24hr endpoint"""
+def make_request_with_retry(url, proxies, params=None, max_retries=3, timeout=15):
+    """Make HTTP request with retry logic and exponential backoff"""
+    for attempt in range(max_retries):
+        try:
+            # Add jitter to avoid thundering herd
+            if attempt > 0:
+                delay = (2 ** attempt) + random.uniform(0, 1)
+                logging.info(f"Retrying in {delay:.1f}s (attempt {attempt + 1}/{max_retries})")
+                time.sleep(delay)
+            
+            response = requests.get(
+                url, 
+                proxies=proxies, 
+                params=params,
+                timeout=timeout,
+                headers={
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+            )
+            
+            if response.status_code == 200:
+                return response
+            else:
+                logging.warning(f"HTTP {response.status_code} on attempt {attempt + 1}")
+                
+        except requests.exceptions.ReadTimeout:
+            logging.warning(f"Read timeout on attempt {attempt + 1}/{max_retries}")
+        except requests.exceptions.ConnectTimeout:
+            logging.warning(f"Connect timeout on attempt {attempt + 1}/{max_retries}")
+        except requests.exceptions.ConnectionError as e:
+            logging.warning(f"Connection error on attempt {attempt + 1}/{max_retries}: {e}")
+        except Exception as e:
+            logging.warning(f"Request error on attempt {attempt + 1}/{max_retries}: {e}")
+    
+    return None
+
+def get_binance_prices_batch_retry(symbols, proxy):
+    """Get Binance prices with retry logic and smaller batches"""
     prices = {}
     if not symbols:
         return prices
     
     proxies = {"http": proxy, "https": proxy}
     
-    # Binance allows getting all tickers at once
-    try:
-        url = "https://api.binance.com/api/v3/ticker/price"
-        response = requests.get(url, proxies=proxies, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            symbol_set = set(symbols)
-            
-            for item in data:
-                symbol = item['symbol'].lower()
-                if symbol in symbol_set:
-                    prices[f"binance_{symbol.upper()}"] = float(item['price'])
-        else:
-            logging.warning(f"Binance price request failed: {response.status_code}")
-            
-    except Exception as e:
-        logging.warning(f"Failed to get Binance prices: {e}")
+    # Try getting specific symbols first (more reliable than all tickers)
+    symbol_chunks = [symbols[i:i+50] for i in range(0, len(symbols), 50)]  # Process in chunks of 50
     
+    for chunk in symbol_chunks:
+        try:
+            # Use ticker/price endpoint with specific symbols
+            symbols_param = '["' + '","'.join([s.upper() for s in chunk]) + '"]'
+            url = "https://api.binance.com/api/v3/ticker/price"
+            params = {"symbols": symbols_param}
+            
+            response = make_request_with_retry(url, proxies, params, max_retries=3, timeout=20)
+            
+            if response:
+                data = response.json()
+                for item in data:
+                    symbol = item['symbol'].lower()
+                    if symbol in symbols:
+                        prices[f"binance_{symbol.upper()}"] = float(item['price'])
+            
+            # Small delay between chunks to avoid rate limiting
+            time.sleep(0.5)
+            
+        except Exception as e:
+            logging.warning(f"Failed to get Binance prices for chunk: {e}")
+    
+    logging.info(f"Successfully retrieved {len(prices)} Binance prices")
     return prices
 
-def get_bybit_prices_batch(symbols, proxy):
-    """Get Bybit prices using tickers endpoint"""
+def get_bybit_prices_batch_retry(symbols, proxy):
+    """Get Bybit prices with retry logic"""
     prices = {}
     if not symbols:
         return prices
@@ -192,12 +236,13 @@ def get_bybit_prices_batch(symbols, proxy):
     proxies = {"http": proxy, "https": proxy}
     
     try:
-        # Get all linear tickers
+        # Get all linear tickers - Bybit endpoint is usually faster
         url = "https://api.bybit.com/v5/market/tickers"
         params = {"category": "linear"}
-        response = requests.get(url, params=params, proxies=proxies, timeout=10)
         
-        if response.status_code == 200:
+        response = make_request_with_retry(url, proxies, params, max_retries=3, timeout=20)
+        
+        if response:
             data = response.json()
             if "result" in data and "list" in data["result"]:
                 symbol_set = set(symbols)
@@ -206,61 +251,72 @@ def get_bybit_prices_batch(symbols, proxy):
                     symbol = item['symbol'].upper()
                     if symbol in symbol_set:
                         prices[f"bybit_{symbol}"] = float(item['lastPrice'])
-        else:
-            logging.warning(f"Bybit price request failed: {response.status_code}")
-            
+                        
     except Exception as e:
         logging.warning(f"Failed to get Bybit prices: {e}")
     
+    logging.info(f"Successfully retrieved {len(prices)} Bybit prices")
     return prices
 
-def collect_all_prices_fast(levels, proxy_pool, timeout=10):
-    """Fast price collection using REST APIs with the fastest proxy"""
-    # Find the fastest working proxy
-    fastest_proxy = find_fastest_working_proxy(proxy_pool)
-    if not fastest_proxy:
-        logging.error("No working proxy found")
-        return {}
+def collect_all_prices_fast_retry(levels, proxy_pool, timeout=25):
+    """Fast price collection with retry logic and fallback proxies"""
+    # Get top 3 fastest proxies as fallbacks
+    proxy_pool_subset = ProxyPool(max_pool_size=3)
+    proxy_pool_subset.proxies = proxy_pool.proxies[:3]
     
-    # Separate symbols by exchange
-    binance_symbols = []
-    bybit_symbols = []
-    
-    for level_info in levels.values():
-        exchange = level_info["exchange"].lower()
-        symbol = level_info["symbol"]
+    # Try up to 3 different proxies
+    for proxy_attempt in range(min(3, len(proxy_pool.proxies))):
+        fastest_proxy = proxy_pool.proxies[proxy_attempt]
+        logging.info(f"Attempting price collection with proxy {proxy_attempt + 1}: {fastest_proxy}")
         
-        if exchange == "binance":
-            binance_symbols.append(symbol.lower())
-        elif exchange == "bybit":
-            bybit_symbols.append(symbol.upper())
-    
-    logging.info(f"Collecting prices for {len(binance_symbols)} Binance + {len(bybit_symbols)} Bybit symbols...")
-    
-    start_time = time.time()
-    all_prices = {}
-    
-    # Get prices from both exchanges concurrently
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        binance_future = executor.submit(get_binance_prices_batch, binance_symbols, fastest_proxy)
-        bybit_future = executor.submit(get_bybit_prices_batch, bybit_symbols, fastest_proxy)
+        # Separate symbols by exchange
+        binance_symbols = []
+        bybit_symbols = []
         
-        # Collect results
-        binance_prices = binance_future.result()
-        bybit_prices = bybit_future.result()
+        for level_info in levels.values():
+            exchange = level_info["exchange"].lower()
+            symbol = level_info["symbol"]
+            
+            if exchange == "binance":
+                binance_symbols.append(symbol.lower())
+            elif exchange == "bybit":
+                bybit_symbols.append(symbol.upper())
+        
+        logging.info(f"Collecting prices for {len(binance_symbols)} Binance + {len(bybit_symbols)} Bybit symbols...")
+        
+        start_time = time.time()
+        all_prices = {}
+        
+        # Try to get prices from both exchanges
+        binance_prices = get_binance_prices_batch_retry(binance_symbols, fastest_proxy)
+        bybit_prices = get_bybit_prices_batch_retry(bybit_symbols, fastest_proxy)
         
         all_prices.update(binance_prices)
         all_prices.update(bybit_prices)
+        
+        elapsed_time = time.time() - start_time
+        success_rate = len(all_prices) / (len(binance_symbols) + len(bybit_symbols)) if (len(binance_symbols) + len(bybit_symbols)) > 0 else 0
+        
+        logging.info(f"Collected {len(all_prices)} prices in {elapsed_time:.1f}s (success rate: {success_rate:.1%})")
+        
+        # If we got reasonable success rate, return results
+        if success_rate > 0.3:  # At least 30% success rate
+            return all_prices
+        else:
+            logging.warning(f"Low success rate ({success_rate:.1%}), trying next proxy...")
+            proxy_pool.mark_proxy_failure(fastest_proxy)
     
-    elapsed_time = time.time() - start_time
-    logging.info(f"Collected {len(all_prices)} prices in {elapsed_time:.1f}s using fastest proxy")
-    
-    return all_prices
+    logging.error("Failed to collect prices with all available proxies")
+    return {}
 
-def check_level_hits_fast(levels, proxy_pool):
-    """Fast level hit checking using REST APIs"""
-    current_prices = collect_all_prices_fast(levels, proxy_pool)
+def check_level_hits_fast_retry(levels, proxy_pool):
+    """Fast level hit checking with retry logic"""
+    current_prices = collect_all_prices_fast_retry(levels, proxy_pool)
     hits = []
+    
+    if not current_prices:
+        logging.warning("No prices collected, cannot check level hits")
+        return hits
     
     for key, level_info in levels.items():
         try:
@@ -999,7 +1055,7 @@ async def main():
             proxy_pool = ProxyPool(max_pool_size=5)  # Small pool for quick checks
             proxy_pool.populate_from_url(proxy_url)
         
-            hits = check_level_hits_fast(levels, proxy_pool)
+            hits = check_level_hits_fast_retry(levels, proxy_pool)
         
             if hits:
                 logging.info(f"🚨 Found {len(hits)} level hits!")
