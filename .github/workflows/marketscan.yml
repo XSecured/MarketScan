@@ -1,9 +1,17 @@
-name: Market Scan Daily
+name: Smart Market Scanner
 
 on:
   schedule:
-    - cron: '1 0 * * *'  # Run daily at 00:01 UTC (just after daily candle open)
+    # Full pattern scan once a day at 00:01 UTC (same as your current time)
+    - cron: '1 0 * * *'
+    # Quick price checks every hour (1-23)
+    - cron: '0 1-23 * * *'
   workflow_dispatch:      # Manual trigger button
+    inputs:
+      force_full_scan:
+        description: 'Force full pattern scan'
+        required: false
+        default: 'false'
 
 jobs:
   scan:
@@ -22,10 +30,31 @@ jobs:
         python -m pip install --upgrade pip setuptools wheel
         pip install -r requirements.txt
 
+    - name: Determine Run Type
+      id: run_type
+      run: |
+        if [[ "${{ github.event.schedule }}" == "1 0 * * *" ]] || [[ "${{ github.event.inputs.force_full_scan }}" == "true" ]]; then
+          echo "mode=full_scan" >> $GITHUB_OUTPUT
+          echo "🔍 Running FULL PATTERN SCAN"
+        else
+          echo "mode=price_check" >> $GITHUB_OUTPUT
+          echo "⚡ Running QUICK PRICE CHECK"
+        fi
+
     - name: Run marketscan.py
       env:
         PROXY_LIST_URL: ${{ secrets.PROXY_LIST_URL }}
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        RUN_MODE: ${{ steps.run_type.outputs.mode }}
       run: |
         python marketscan.py
+
+    - name: Commit Level Updates
+      if: always()
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "Market Scanner Bot"
+        git add -A
+        git diff --staged --quiet || git commit -m "Update detected levels - $(date)"
+        git push
