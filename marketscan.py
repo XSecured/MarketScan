@@ -145,25 +145,17 @@ def check_level_hits_simple(levels, binance_client, bybit_client):
     return hits
 
 def create_alerts_telegram_report(hits):
-    """Create telegram message for level hits/alerts - simplified version"""
+    """Create single consolidated telegram message for level hits/alerts"""
     if not hits:
-        return []
-    
+        return ["💥 *LEVEL ALERTS* 💥\n\n❌ No levels got hit at this time."]
+
     # Get timestamp
     utc_now = datetime.now(timezone.utc)
     utc_plus_3 = timezone(timedelta(hours=3))
     current_time = utc_now.astimezone(utc_plus_3)
     timestamp = current_time.strftime("%Y-%m-%d %H:%M:%S UTC+3")
-    
-    messages = []
-    
-    # Create header message
-    header = "🚨 *LEVEL ALERTS* 🚨\n\n"
-    header += f"⚡ {len(hits)} levels got hit!\n\n"
-    header += f"🕒 {timestamp}"
-    messages.append(header)
-    
-    # Group by timeframe and exchange
+
+    # Group hits by timeframe and exchange
     timeframes = {}
     for hit in hits:
         interval = hit["interval"]
@@ -173,40 +165,40 @@ def create_alerts_telegram_report(hits):
             timeframes[interval] = {"Binance": {"bullish": [], "bearish": []}, "Bybit": {"bullish": [], "bearish": []}}
         
         timeframes[interval][exchange][hit["signal_type"]].append(hit)
-    
-    # Create messages by timeframe
+
+    # Build single consolidated message
+    message = f"🚨 *LEVEL ALERTS* 🚨\n\n⚡ {len(hits)} levels got hit!\n\n🕒 {timestamp}\n\n"
+
+    # Add each timeframe section
     for interval in ["1M", "1w", "1d"]:
         if interval not in timeframes:
             continue
             
-        current_msg = f"📅 *{interval} Alerts*\n\n"
-        has_content = False
+        message += f"📅 *{interval} Alerts*\n\n"
         
         for exchange in ["Binance", "Bybit"]:
             bullish_hits = timeframes[interval][exchange]["bullish"]
             bearish_hits = timeframes[interval][exchange]["bearish"]
             
             if bullish_hits or bearish_hits:
-                current_msg += f"*{exchange}*:\n"
-                has_content = True
+                message += f"*{exchange}*:\n"
                 
                 if bullish_hits:
-                    current_msg += f"🍏 *Bullish ({len(bullish_hits)})*\n"
+                    message += f"🍏 *Bullish ({len(bullish_hits)})*\n"
                     for hit in bullish_hits:
-                        current_msg += f"• {hit['symbol']} @ ${hit['level_price']:.6f}\n"
-                    current_msg += "\n"
+                        message += f"• {hit['symbol']} @ ${hit['level_price']:.6f}\n"
+                    message += "\n"
                 
                 if bearish_hits:
-                    current_msg += f"🔻 *Bearish ({len(bearish_hits)})*\n"
+                    message += f"🔻 *Bearish ({len(bearish_hits)})*\n"
                     for hit in bearish_hits:
-                        current_msg += f"• {hit['symbol']} @ ${hit['level_price']:.6f}\n"
-                    current_msg += "\n"
+                        message += f"• {hit['symbol']} @ ${hit['level_price']:.6f}\n"
+                    message += "\n"
         
-        if has_content:
-            current_msg += "——————————————————\n"
-            messages.append(current_msg)
-    
-    return messages
+        message += "——————————————————\n\n"
+
+    # Return as single message in a list (to maintain compatibility with existing code)
+    return [message.strip()]
 
 # --- Normalization and Priority Functions ---
 
@@ -862,10 +854,12 @@ async def main():
         if hits:
             logging.info(f"🚨 Found {len(hits)} level hits!")
             alert_messages = create_alerts_telegram_report(hits)
-            for msg in alert_messages:
+     
+            # Now it's just one message instead of multiple
+            for msg in alert_messages:  # This will only loop once now
                 try:
                     await bot.send_message(chat_id=int(TELEGRAM_CHAT_ID), text=msg, parse_mode='Markdown')
-                    await asyncio.sleep(0.5)
+                    logging.info("Alert message sent successfully.")
                 except Exception as e:
                     logging.error(f"Failed to send alert: {e}")
         else:
