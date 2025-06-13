@@ -80,14 +80,14 @@ def load_levels_from_file(filename="detected_levels.json"):
 
 # --- Simplified Alert System Using Existing Infrastructure ---
 
-def check_level_hits_simple(levels, binance_client, bybit_client):
-    """Simple level hit checking using existing proven client infrastructure"""
+def check_level_hits_simple_concurrent(levels, binance_client, bybit_client):
+    """Concurrent level hit checking using ThreadPoolExecutor"""
     hits = []
     
     if not levels:
         return hits
     
-    logging.info(f"Checking {len(levels)} levels using existing client infrastructure...")
+    logging.info(f"Checking {len(levels)} levels using concurrent infrastructure...")
     
     # Group levels by exchange, symbol, and interval for efficient checking
     symbols_to_check = {}
@@ -102,20 +102,24 @@ def check_level_hits_simple(levels, binance_client, bybit_client):
             symbols_to_check[check_key] = []
         symbols_to_check[check_key].append(level_info)
     
-    # Check each unique symbol/timeframe combination
-    for check_key, level_list in symbols_to_check.items():
+    # Use ThreadPoolExecutor for concurrent checking (like full scan)
+    lock = threading.Lock()
+    
+    def check_symbol_levels(check_key, level_list):
+        """Check levels for a single symbol/timeframe combination"""
+        local_hits = []
         try:
             exchange, symbol, market, interval = check_key.split("_", 3)
             client = binance_client if exchange == "Binance" else bybit_client
             
-            # Use existing proven fetch_ohlcv method (gets current price in candle data)
+            # Use existing proven fetch_ohlcv method
             df = client.fetch_ohlcv(symbol, interval, limit=2, market=market)
             
             if df.empty or len(df) < 1:
-                continue
+                return
             
             # Get current price from the latest candle
-            current_candle = df.iloc[0]  # Most recent candle
+            current_candle = df.iloc[0]
             current_low = float(current_candle['low'])
             current_high = float(current_candle['high'])
             current_close = float(current_candle['close'])
@@ -124,9 +128,8 @@ def check_level_hits_simple(levels, binance_client, bybit_client):
             for level_info in level_list:
                 level_price = level_info["price"]
                 
-                # Check if current candle range contains the level price
                 if current_low <= level_price <= current_high:
-                    hits.append({
+                    local_hits.append({
                         "exchange": level_info["exchange"],
                         "symbol": symbol,
                         "market": level_info["market"],
@@ -138,9 +141,25 @@ def check_level_hits_simple(levels, binance_client, bybit_client):
                         "current_high": current_high,
                         "original_timestamp": level_info["timestamp"]
                     })
-                    
+            
+            # Thread-safe append
+            with lock:
+                hits.extend(local_hits)
+                
         except Exception as e:
             logging.warning(f"Failed to check levels for {check_key}: {e}")
+    
+    # Use same concurrency as full scan
+    with concurrent.futures.ThreadPoolExecutor(max_workers=25) as executor:
+        futures = [
+            executor.submit(check_symbol_levels, check_key, level_list)
+            for check_key, level_list in symbols_to_check.items()
+        ]
+        
+        # Use tqdm for progress tracking like full scan
+        for _ in tqdm(concurrent.futures.as_completed(futures), 
+                     total=len(futures), desc="Checking levels"):
+            pass
     
     return hits
 
@@ -826,8 +845,8 @@ async def main():
     bot = Bot(token=TELEGRAM_TOKEN)
     
     if run_mode == "price_check":
-        # QUICK MODE: Check level hits using existing proven infrastructure
-        logging.info("🔍 Quick price check mode - using existing client infrastructure...")
+        # CONCURRENT MODE: Check level hits using ThreadPoolExecutor like full scan
+        logging.info("🔍 Concurrent price check mode - using ThreadPoolExecutor...")
     
         levels = load_levels_from_file()
         if not levels:
@@ -841,15 +860,15 @@ async def main():
             return
 
         # Create the SAME proxy pool and clients as full scan
-        proxy_pool = ProxyPool(max_pool_size=25)  # Smaller pool for quick checks
+        proxy_pool = ProxyPool(max_pool_size=25)
         proxy_pool.populate_from_url(proxy_url)
         proxy_pool.start_checker()
 
         binance_client = BinanceClient(proxy_pool)
         bybit_client = BybitClient(proxy_pool)
     
-        # Use simple level checking with existing proven clients
-        hits = check_level_hits_simple(levels, binance_client, bybit_client)
+        # Use CONCURRENT level checking (Solution 1 only)
+        hits = check_level_hits_simple_concurrent(levels, binance_client, bybit_client)
     
         if hits:
             logging.info(f"🚨 Found {len(hits)} level hits!")
