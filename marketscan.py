@@ -81,7 +81,7 @@ def load_levels_from_file(filename="detected_levels.json"):
 
 # --- WebSocket Price Collection with Existing Proxy System ---
 
-async def get_binance_prices_websocket(symbols, proxy_url, timeout=15):
+async def get_binance_prices_websocket(symbols, proxy_url, timeout=10):
     """Get Binance prices via WebSocket using existing proxy system"""
     prices = {}
     
@@ -89,6 +89,9 @@ async def get_binance_prices_websocket(symbols, proxy_url, timeout=15):
         return prices
     
     try:
+        # Install required: pip install websockets-proxy
+        from websockets_proxy import Proxy, proxy_connect
+        
         # Create proxy object
         proxy = Proxy.from_url(proxy_url)
         
@@ -97,7 +100,7 @@ async def get_binance_prices_websocket(symbols, proxy_url, timeout=15):
         stream = "/".join([f"{symbol.lower()}@ticker" for symbol in symbols_batch])
         url = f"wss://stream.binance.com:9443/ws/{stream}"
         
-        logging.info(f"Connecting to Binance WebSocket via proxy: {proxy_url}")
+        logging.info(f"Connecting to Binance WebSocket via proxy")
         
         async with proxy_connect(url, proxy=proxy) as websocket:
             # Set a timeout for data collection
@@ -106,7 +109,7 @@ async def get_binance_prices_websocket(symbols, proxy_url, timeout=15):
             while time.time() - start_time < timeout:
                 try:
                     # Wait for message with timeout
-                    message = await asyncio.wait_for(websocket.recv(), timeout=2.0)
+                    message = await asyncio.wait_for(websocket.recv(), timeout=1.0)
                     data = json.loads(message)
                     
                     if isinstance(data, list):
@@ -123,7 +126,7 @@ async def get_binance_prices_websocket(symbols, proxy_url, timeout=15):
                         prices[f"binance_{symbol}"] = price
                     
                     # If we got most of our symbols, break early
-                    if len(prices) >= len(symbols_batch) * 0.8:
+                    if len(prices) >= len(symbols_batch) * 0.7:
                         break
                         
                 except asyncio.TimeoutError:
@@ -139,8 +142,8 @@ async def get_binance_prices_websocket(symbols, proxy_url, timeout=15):
     logging.info(f"Collected {len(prices)} Binance prices via WebSocket")
     return prices
 
-async def get_bybit_prices_rest_fast(symbols, proxy_url):
-    """Get Bybit prices via REST (faster than WebSocket setup)"""
+async def get_bybit_prices_rest_async(symbols, proxy_url):
+    """Get Bybit prices via async REST"""
     prices = {}
     
     if not symbols or not proxy_url:
@@ -149,11 +152,8 @@ async def get_bybit_prices_rest_fast(symbols, proxy_url):
     try:
         import aiohttp
         
-        # Parse proxy URL for aiohttp
-        proxy_parts = proxy_url.replace("http://", "").replace("https://", "")
-        
         connector = aiohttp.ProxyConnector.from_url(proxy_url)
-        timeout = aiohttp.ClientTimeout(total=10)
+        timeout = aiohttp.ClientTimeout(total=8)
         
         async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
             url = "https://api.bybit.com/v5/market/tickers"
@@ -205,9 +205,9 @@ async def collect_prices_websocket_with_proxy_pool(levels, proxy_pool):
     # Run both exchanges concurrently
     tasks = []
     if binance_symbols:
-        tasks.append(get_binance_prices_websocket(binance_symbols, proxy, timeout=10))
+        tasks.append(get_binance_prices_websocket(binance_symbols, proxy))
     if bybit_symbols:
-        tasks.append(get_bybit_prices_rest_fast(bybit_symbols, proxy))
+        tasks.append(get_bybit_prices_rest_async(bybit_symbols, proxy))
     
     if not tasks:
         return {}
@@ -227,20 +227,11 @@ async def collect_prices_websocket_with_proxy_pool(levels, proxy_pool):
     
     return all_prices
 
-def check_level_hits_websocket_fast(levels, proxy_pool):
+async def check_level_hits_websocket_fast(levels, proxy_pool):
     """Fast level hit checking using WebSocket with existing proxy system"""
     
-    # Run the async price collection
-    try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        current_prices = loop.run_until_complete(
-            collect_prices_websocket_with_proxy_pool(levels, proxy_pool)
-        )
-        loop.close()
-    except Exception as e:
-        logging.error(f"Failed to collect prices: {e}")
-        return []
+    # FIXED: Directly await instead of creating new event loop
+    current_prices = await collect_prices_websocket_with_proxy_pool(levels, proxy_pool)
     
     hits = []
     
@@ -973,8 +964,8 @@ async def main():
         proxy_pool = ProxyPool(max_pool_size=3)  # Just need a few working proxies
         proxy_pool.populate_from_url(proxy_url)
     
-        # Use WebSocket-based level checking
-        hits = check_level_hits_websocket_fast(levels, proxy_pool)
+        # FIXED: Properly await the async function
+        hits = await check_level_hits_websocket_fast(levels, proxy_pool)
     
         if hits:
             logging.info(f"🚨 Found {len(hits)} level hits!")
