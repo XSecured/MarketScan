@@ -15,7 +15,7 @@ from datetime import datetime, timezone, timedelta
 import json
 import websocket
 from pathlib import Path
-from websockets_proxy import Proxy, proxy_connect
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 # List of symbols to ignore in all scanning
@@ -25,10 +25,6 @@ IGNORED_SYMBOLS = {
     "USDYUSDT", "USDRUSDT", "ETH3LUSDT", "ETHUSDT-27MAR26", 
     "ETHUSDT-27JUN25", "ETHUSDT-26DEC25", "ETHUSDT-26SEP25"
 }
-
-# Global variables for WebSocket
-websocket_data = {}
-websocket_complete = threading.Event()
 
 # --- Level Persistence Functions ---
 
@@ -83,144 +79,149 @@ def load_levels_from_file(filename="detected_levels.json"):
         logging.error(f"Failed to load previous levels: {e}")
         return {}
 
-# --- Enhanced WebSocket Price Checking with Proxy Support ---
+# --- Fast Proxy Selection and Price Collection ---
 
-def on_binance_message(ws, message):
-    """Handle Binance WebSocket messages"""
+def test_proxy_speed_for_exchanges(proxy, timeout=5):
+    """Test proxy speed for both Binance and Bybit APIs"""
     try:
-        data = json.loads(message)
-        if isinstance(data, list):
-            # Handle multiple symbols in one stream
-            for item in data:
-                if 'c' in item and 's' in item:  # Current price and symbol
-                    symbol = item['s'].upper()
-                    price = float(item['c'])
-                    websocket_data[f"binance_{symbol}"] = price
-        elif 'c' in data and 's' in data:  # Single symbol
-            symbol = data['s'].upper()
-            price = float(data['c'])
-            websocket_data[f"binance_{symbol}"] = price
-    except Exception as e:
-        logging.warning(f"Error processing Binance message: {e}")
-
-def on_binance_error(ws, error):
-    """Handle Binance WebSocket errors"""
-    logging.warning(f"Binance WebSocket error: {error}")
-
-def on_binance_close(ws, close_status_code, close_msg):
-    """Handle Binance WebSocket close"""
-    logging.info(f"Binance WebSocket closed: {close_status_code} - {close_msg}")
-
-def create_binance_websocket_with_proxy(symbols, proxy_pool, timeout=10):
-    """Create Binance WebSocket connection with proxy support"""
-    if not symbols:
-        return None
+        proxies = {"http": proxy, "https": proxy}
         
-    # Get a working proxy
-    proxy = proxy_pool.get_next_proxy()
-    if not proxy:
-        logging.error("No proxy available for WebSocket")
-        return None
-    
-    # Create stream URL for multiple symbols (limit to 100)
-    symbols_batch = symbols[:100]
-    stream = "/".join([f"{symbol.lower()}@ticker" for symbol in symbols_batch])
-    url = f"wss://stream.binance.com:9443/ws/{stream}"
-    
-    logging.info(f"Connecting to Binance WebSocket with proxy {proxy}")
-    
-    # Parse proxy URL
-    if "://" in proxy:
-        proxy_parts = proxy.split("://", 1)
-        proxy_scheme = proxy_parts[0]
-        proxy_host_port = proxy_parts[1]
-    else:
-        proxy_scheme = "http"
-        proxy_host_port = proxy
-    
-    if ":" in proxy_host_port:
-        proxy_host, proxy_port = proxy_host_port.rsplit(":", 1)
-        proxy_port = int(proxy_port)
-    else:
-        proxy_host = proxy_host_port
-        proxy_port = 8080 if proxy_scheme == "http" else 1080
-    
-    try:
-        # Create WebSocket with proxy
-        ws = websocket.WebSocketApp(
-            url,
-            on_message=on_binance_message,
-            on_error=on_binance_error,
-            on_close=on_binance_close
+        # Test Binance API speed
+        start_time = time.time()
+        binance_response = requests.get(
+            "https://api.binance.com/api/v3/ping", 
+            proxies=proxies, 
+            timeout=timeout
         )
+        binance_time = time.time() - start_time
         
-        # Set proxy
-        ws.http_proxy_host = proxy_host
-        ws.http_proxy_port = proxy_port
+        if binance_response.status_code != 200:
+            return None
         
-        def run_websocket():
-            try:
-                ws.run_forever()
-            except Exception as e:
-                logging.error(f"WebSocket run error: {e}")
-                proxy_pool.mark_proxy_failure(proxy)
+        # Test Bybit API speed  
+        start_time = time.time()
+        bybit_response = requests.get(
+            "https://api.bybit.com/v5/market/time",
+            proxies=proxies,
+            timeout=timeout
+        )
+        bybit_time = time.time() - start_time
         
-        ws_thread = threading.Thread(target=run_websocket, daemon=True)
-        ws_thread.start()
-        
-        return ws_thread
+        if bybit_response.status_code != 200:
+            return None
+            
+        # Return average response time
+        avg_time = (binance_time + bybit_time) / 2
+        return {
+            "proxy": proxy,
+            "avg_response_time": avg_time,
+            "binance_time": binance_time,
+            "bybit_time": bybit_time
+        }
         
     except Exception as e:
-        logging.error(f"Failed to create Binance WebSocket: {e}")
-        proxy_pool.mark_proxy_failure(proxy)
         return None
 
-async def get_bybit_prices_rest(symbols, proxy_pool):
-    """Fallback to REST API for Bybit prices since WebSocket is complex"""
+def find_fastest_working_proxy(proxy_pool, max_test=10):
+    """Find the fastest working proxy for both exchanges"""
+    proxies_to_test = proxy_pool.proxies[:max_test]  # Test first 10 proxies
+    
+    if not proxies_to_test:
+        logging.error("No proxies available to test")
+        return None
+    
+    logging.info(f"Testing {len(proxies_to_test)} proxies for speed...")
+    
+    results = []
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_proxy = {
+            executor.submit(test_proxy_speed_for_exchanges, proxy): proxy 
+            for proxy in proxies_to_test
+        }
+        
+        for future in as_completed(future_to_proxy):
+            result = future.result()
+            if result:
+                results.append(result)
+    
+    if not results:
+        logging.error("No working proxies found for exchanges")
+        return None
+    
+    # Sort by average response time (fastest first)
+    results.sort(key=lambda x: x['avg_response_time'])
+    fastest = results[0]
+    
+    logging.info(f"Fastest proxy: {fastest['proxy']} (avg: {fastest['avg_response_time']:.2f}s)")
+    return fastest['proxy']
+
+def get_binance_prices_batch(symbols, proxy, batch_size=100):
+    """Get Binance prices in batches using ticker/24hr endpoint"""
     prices = {}
     if not symbols:
         return prices
     
-    # Batch symbols into groups of 10 for efficiency
-    symbol_batches = [symbols[i:i+10] for i in range(0, len(symbols), 10)]
+    proxies = {"http": proxy, "https": proxy}
     
-    for batch in symbol_batches:
-        try:
-            proxy = proxy_pool.get_next_proxy()
-            if not proxy:
-                continue
-                
-            proxies = {"http": proxy, "https": proxy}
+    # Binance allows getting all tickers at once
+    try:
+        url = "https://api.binance.com/api/v3/ticker/price"
+        response = requests.get(url, proxies=proxies, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            symbol_set = set(symbols)
             
-            # Get tickers for all symbols in batch
-            symbols_param = ",".join(batch)
-            url = f"https://api.bybit.com/v5/market/tickers"
-            params = {"category": "linear", "symbol": symbols_param}
+            for item in data:
+                symbol = item['symbol'].lower()
+                if symbol in symbol_set:
+                    prices[f"binance_{symbol.upper()}"] = float(item['price'])
+        else:
+            logging.warning(f"Binance price request failed: {response.status_code}")
             
-            response = requests.get(url, params=params, proxies=proxies, timeout=5)
-            if response.status_code == 200:
-                data = response.json()
-                if "result" in data and "list" in data["result"]:
-                    for item in data["result"]["list"]:
-                        if "symbol" in item and "lastPrice" in item:
-                            symbol = item["symbol"].upper()
-                            price = float(item["lastPrice"])
-                            prices[f"bybit_{symbol}"] = price
-            else:
-                proxy_pool.mark_proxy_failure(proxy)
-                
-        except Exception as e:
-            logging.warning(f"Failed to get Bybit prices for batch: {e}")
-            if 'proxy' in locals():
-                proxy_pool.mark_proxy_failure(proxy)
+    except Exception as e:
+        logging.warning(f"Failed to get Binance prices: {e}")
     
     return prices
 
-def collect_prices_via_websocket_with_proxy(levels, proxy_pool, timeout=15):
-    """Collect current prices using WebSocket with proxy support"""
-    global websocket_data
+def get_bybit_prices_batch(symbols, proxy):
+    """Get Bybit prices using tickers endpoint"""
+    prices = {}
+    if not symbols:
+        return prices
     
-    websocket_data.clear()
+    proxies = {"http": proxy, "https": proxy}
+    
+    try:
+        # Get all linear tickers
+        url = "https://api.bybit.com/v5/market/tickers"
+        params = {"category": "linear"}
+        response = requests.get(url, params=params, proxies=proxies, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "result" in data and "list" in data["result"]:
+                symbol_set = set(symbols)
+                
+                for item in data["result"]["list"]:
+                    symbol = item['symbol'].upper()
+                    if symbol in symbol_set:
+                        prices[f"bybit_{symbol}"] = float(item['lastPrice'])
+        else:
+            logging.warning(f"Bybit price request failed: {response.status_code}")
+            
+    except Exception as e:
+        logging.warning(f"Failed to get Bybit prices: {e}")
+    
+    return prices
+
+def collect_all_prices_fast(levels, proxy_pool, timeout=10):
+    """Fast price collection using REST APIs with the fastest proxy"""
+    # Find the fastest working proxy
+    fastest_proxy = find_fastest_working_proxy(proxy_pool)
+    if not fastest_proxy:
+        logging.error("No working proxy found")
+        return {}
     
     # Separate symbols by exchange
     binance_symbols = []
@@ -235,52 +236,31 @@ def collect_prices_via_websocket_with_proxy(levels, proxy_pool, timeout=15):
         elif exchange == "bybit":
             bybit_symbols.append(symbol.upper())
     
-    if not binance_symbols and not bybit_symbols:
-        return {}
-    
     logging.info(f"Collecting prices for {len(binance_symbols)} Binance + {len(bybit_symbols)} Bybit symbols...")
     
     start_time = time.time()
+    all_prices = {}
     
-    # Start Binance WebSocket
-    binance_thread = None
-    if binance_symbols:
-        binance_thread = create_binance_websocket_with_proxy(binance_symbols, proxy_pool, timeout)
-        if binance_thread:
-            time.sleep(2)  # Give WebSocket time to connect
-    
-    # Get Bybit prices via REST (faster and more reliable than WebSocket setup)
-    if bybit_symbols:
-        async def get_bybit_data():
-            bybit_prices = await get_bybit_prices_rest(bybit_symbols, proxy_pool)
-            websocket_data.update(bybit_prices)
+    # Get prices from both exchanges concurrently
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        binance_future = executor.submit(get_binance_prices_batch, binance_symbols, fastest_proxy)
+        bybit_future = executor.submit(get_bybit_prices_batch, bybit_symbols, fastest_proxy)
         
-        # Run async function
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(get_bybit_data())
-            loop.close()
-        except Exception as e:
-            logging.warning(f"Failed to get Bybit prices: {e}")
+        # Collect results
+        binance_prices = binance_future.result()
+        bybit_prices = bybit_future.result()
+        
+        all_prices.update(binance_prices)
+        all_prices.update(bybit_prices)
     
-    # Wait for Binance WebSocket data (reduced timeout)
-    while time.time() - start_time < timeout:
-        binance_count = len([k for k in websocket_data.keys() if k.startswith("binance_")])
-        if binance_count >= len(binance_symbols) * 0.7:  # Got 70% of Binance data
-            break
-        time.sleep(0.5)
-    
-    total_collected = len(websocket_data)
     elapsed_time = time.time() - start_time
+    logging.info(f"Collected {len(all_prices)} prices in {elapsed_time:.1f}s using fastest proxy")
     
-    logging.info(f"Collected {total_collected} price points in {elapsed_time:.1f}s")
-    
-    return dict(websocket_data)
+    return all_prices
 
-def check_level_hits_websocket(levels, proxy_pool):
-    """Check level hits using WebSocket prices with proxy support"""
-    current_prices = collect_prices_via_websocket_with_proxy(levels, proxy_pool, timeout=15)
+def check_level_hits_fast(levels, proxy_pool):
+    """Fast level hit checking using REST APIs"""
+    current_prices = collect_all_prices_fast(levels, proxy_pool)
     hits = []
     
     for key, level_info in levels.items():
@@ -1006,21 +986,21 @@ async def main():
     bot = Bot(token=TELEGRAM_TOKEN)
     
     if run_mode == "price_check":
-        # QUICK MODE: Only check if levels got hit via WebSocket
-        logging.info("🔍 Quick price check mode - checking level hits via WebSocket...")
+        # QUICK MODE: Only check if levels got hit using fast REST API approach
+        logging.info("🔍 Quick price check mode - checking level hits via fast REST API...")
     
         levels = load_levels_from_file()
         if not levels:
             logging.info("No levels to check, skipping...")
             return
     
-        # Create a small proxy pool for WebSocket use
+        # Create a small proxy pool for price checking
         proxy_url = os.getenv("PROXY_LIST_URL")
         if proxy_url:
-            proxy_pool = ProxyPool(max_pool_size=5)  # Smaller pool for quick checks
+            proxy_pool = ProxyPool(max_pool_size=5)  # Small pool for quick checks
             proxy_pool.populate_from_url(proxy_url)
         
-            hits = check_level_hits_websocket(levels, proxy_pool)
+            hits = check_level_hits_fast(levels, proxy_pool)
         
             if hits:
                 logging.info(f"🚨 Found {len(hits)} level hits!")
@@ -1028,14 +1008,14 @@ async def main():
                 for msg in alert_messages:
                     try:
                         await bot.send_message(chat_id=int(TELEGRAM_CHAT_ID), text=msg, parse_mode='Markdown')
-                        await asyncio.sleep(0.5)  # Faster rate limiting
+                        await asyncio.sleep(0.5)  # Rate limiting
                     except Exception as e:
                         logging.error(f"Failed to send alert: {e}")
             else:
                 logging.info("✅ No level hits detected")
         else:
-            logging.error("PROXY_LIST_URL not set for WebSocket mode")
-    
+            logging.error("PROXY_LIST_URL not set for price check mode")
+
     else:
         # FULL SCAN MODE: Do complete pattern detection
         logging.info("🔍 Full scan mode - performing complete pattern detection...")
