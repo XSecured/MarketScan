@@ -849,7 +849,7 @@ async def main():
             return
 
         # Create the SAME proxy pool and clients as full scan
-        proxy_pool = ProxyPool(max_pool_size=10)  # Smaller pool for quick checks
+        proxy_pool = ProxyPool(max_pool_size=25)  # Smaller pool for quick checks
         proxy_pool.populate_from_url(proxy_url)
         proxy_pool.start_checker()
 
