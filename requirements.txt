@@ -5,3 +5,5 @@ python-telegram-bot==20.3
 tqdm==4.65.0
 aiohttp
 websocket-client
+websockets-proxy
+python-socks[asyncio]
