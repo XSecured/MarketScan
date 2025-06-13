@@ -15,8 +15,7 @@ from datetime import datetime, timezone, timedelta
 import json
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from websockets_proxy import Proxy, proxy_connect
-import websockets
+
 
 # List of symbols to ignore in all scanning
 IGNORED_SYMBOLS = {
@@ -79,290 +78,54 @@ def load_levels_from_file(filename="detected_levels.json"):
         logging.error(f"Failed to load previous levels: {e}")
         return {}
 
-# --- Enhanced WebSocket with Completion-Based Collection ---
+# --- Simplified Alert System Using Existing Infrastructure ---
 
-async def get_binance_prices_until_complete(symbols, proxy_url, target_completion=0.95, max_time=300):
-    """Keep collecting Binance prices until target completion rate achieved"""
-    prices = {}
-    symbols_needed = set(symbols)
-    
-    if not symbols or not proxy_url:
-        return prices
-    
-    try:
-        proxy = Proxy.from_url(proxy_url)
-        
-        # Process in batches due to Binance 100-symbol limit
-        symbol_batches = [symbols[i:i+100] for i in range(0, len(symbols), 100)]
-        
-        for batch_idx, batch in enumerate(symbol_batches):
-            logging.info(f"Processing Binance batch {batch_idx + 1}/{len(symbol_batches)} ({len(batch)} symbols)")
-            
-            stream = "/".join([f"{symbol.lower()}@ticker" for symbol in batch])
-            url = f"wss://stream.binance.com:9443/ws/{stream}"
-            
-            batch_symbols_needed = set(batch)
-            batch_collected = 0
-            target_for_batch = int(len(batch) * target_completion)
-            
-            try:
-                async with proxy_connect(url, proxy=proxy) as websocket:
-                    start_time = time.time()
-                    last_ping = time.time()
-                    no_new_data_count = 0
-                    
-                    logging.info(f"Batch {batch_idx + 1}: Target {target_for_batch}/{len(batch)} symbols")
-                    
-                    while (batch_collected < target_for_batch and 
-                           time.time() - start_time < max_time and 
-                           no_new_data_count < 30):  # 30 iterations without new data = stop
-                        
-                        try:
-                            # Send ping every 30 seconds to keep connection alive
-                            if time.time() - last_ping > 30:
-                                await websocket.ping()
-                                last_ping = time.time()
-                                logging.debug(f"Sent ping for batch {batch_idx + 1}")
-                            
-                            message = await asyncio.wait_for(websocket.recv(), timeout=5.0)
-                            data = json.loads(message)
-                            
-                            new_data_received = False
-                            
-                            if isinstance(data, list):
-                                for item in data:
-                                    if 'c' in item and 's' in item:
-                                        symbol = item['s'].lower()
-                                        if symbol in batch_symbols_needed:
-                                            price_key = f"binance_{item['s'].upper()}"
-                                            if price_key not in prices:
-                                                prices[price_key] = float(item['c'])
-                                                batch_symbols_needed.discard(symbol)
-                                                batch_collected += 1
-                                                new_data_received = True
-                                                
-                                                if batch_collected % 10 == 0:
-                                                    logging.info(f"Batch {batch_idx + 1}: {batch_collected}/{len(batch)} collected")
-                                                    
-                            elif 'c' in data and 's' in data:
-                                symbol = data['s'].lower()
-                                if symbol in batch_symbols_needed:
-                                    price_key = f"binance_{data['s'].upper()}"
-                                    if price_key not in prices:
-                                        prices[price_key] = float(data['c'])
-                                        batch_symbols_needed.discard(symbol)
-                                        batch_collected += 1
-                                        new_data_received = True
-                            
-                            # Reset no new data counter if we got new data
-                            if new_data_received:
-                                no_new_data_count = 0
-                            else:
-                                no_new_data_count += 1
-                            
-                            # Small delay to prevent overwhelming
-                            await asyncio.sleep(0.05)
-                            
-                        except asyncio.TimeoutError:
-                            no_new_data_count += 1
-                            continue
-                        except Exception as e:
-                            logging.warning(f"Batch {batch_idx + 1} message error: {e}")
-                            no_new_data_count += 1
-                    
-                    completion_rate = batch_collected / len(batch)
-                    logging.info(f"Batch {batch_idx + 1}: {batch_collected}/{len(batch)} collected ({completion_rate:.1%})")
-                    
-            except Exception as e:
-                logging.warning(f"Batch {batch_idx + 1} connection failed: {e}")
-            
-            # Brief pause between batches
-            if batch_idx < len(symbol_batches) - 1:
-                await asyncio.sleep(2)
-                
-    except Exception as e:
-        logging.warning(f"Binance WebSocket failed: {e}")
-    
-    total_collected = len([k for k in prices.keys() if k.startswith('binance_')])
-    completion_rate = total_collected / len(symbols) if symbols else 0
-    logging.info(f"Binance final: {total_collected}/{len(symbols)} symbols ({completion_rate:.1%})")
-    
-    return prices
-
-async def get_bybit_prices_until_complete(symbols, proxy_url, target_completion=0.95, max_time=300):
-    """Keep collecting Bybit prices until target completion rate achieved"""
-    prices = {}
-    symbols_needed = set(symbols)
-    
-    if not symbols or not proxy_url:
-        return prices
-    
-    try:
-        proxy = Proxy.from_url(proxy_url)
-        url = "wss://stream.bybit.com/v5/public/linear"
-        
-        # Bybit can handle more symbols in one connection
-        symbols_batch = symbols[:500]  # Increased limit
-        target_collected = int(len(symbols_batch) * target_completion)
-        
-        logging.info(f"Bybit: Target {target_collected}/{len(symbols_batch)} symbols")
-        
-        async with proxy_connect(url, proxy=proxy) as websocket:
-            # Subscribe to tickers
-            subscribe_msg = {
-                "op": "subscribe",
-                "args": [f"tickers.{symbol}" for symbol in symbols_batch]
-            }
-            
-            await websocket.send(json.dumps(subscribe_msg))
-            
-            start_time = time.time()
-            last_ping = time.time()
-            collected_count = 0
-            no_new_data_count = 0
-            subscription_confirmed = False
-            
-            while (collected_count < target_collected and 
-                   time.time() - start_time < max_time and 
-                   no_new_data_count < 50):  # More patience for Bybit
-                
-                try:
-                    # Send ping every 30 seconds
-                    if time.time() - last_ping > 30:
-                        ping_msg = {"op": "ping"}
-                        await websocket.send(json.dumps(ping_msg))
-                        last_ping = time.time()
-                        logging.debug("Sent Bybit ping")
-                    
-                    message = await asyncio.wait_for(websocket.recv(), timeout=10.0)
-                    data = json.loads(message)
-                    
-                    new_data_received = False
-                    
-                    # Handle subscription confirmation
-                    if data.get("success") and data.get("op") == "subscribe":
-                        if not subscription_confirmed:
-                            logging.info("Bybit WebSocket subscription confirmed")
-                            subscription_confirmed = True
-                        continue
-                    
-                    # Handle pong response
-                    if data.get("op") == "pong":
-                        logging.debug("Received Bybit pong")
-                        continue
-                    
-                    # Handle ticker data
-                    if data.get("topic", "").startswith("tickers.") and "data" in data:
-                        ticker_data = data["data"]
-                        symbol = ticker_data.get("symbol", "").upper()
-                        last_price = ticker_data.get("lastPrice")
-                        
-                        if symbol and last_price and symbol in symbols_needed:
-                            price_key = f"bybit_{symbol}"
-                            if price_key not in prices:
-                                prices[price_key] = float(last_price)
-                                symbols_needed.discard(symbol)
-                                collected_count += 1
-                                new_data_received = True
-                                
-                                if collected_count % 20 == 0:
-                                    logging.info(f"Bybit: {collected_count}/{len(symbols_batch)} collected")
-                    
-                    # Reset counter if new data received
-                    if new_data_received:
-                        no_new_data_count = 0
-                    else:
-                        no_new_data_count += 1
-                    
-                    await asyncio.sleep(0.02)  # Small delay
-                    
-                except asyncio.TimeoutError:
-                    no_new_data_count += 1
-                    continue
-                except Exception as e:
-                    logging.warning(f"Bybit WebSocket message error: {e}")
-                    no_new_data_count += 1
-                    
-    except Exception as e:
-        logging.warning(f"Bybit WebSocket connection failed: {e}")
-    
-    completion_rate = collected_count / len(symbols) if symbols else 0
-    logging.info(f"Bybit final: {collected_count}/{len(symbols)} symbols ({completion_rate:.1%})")
-    
-    return prices
-
-async def collect_prices_until_complete(levels, proxy_pool, target_completion=0.95):
-    """Collect prices until target completion rate with no arbitrary time limits"""
-    
-    proxy = proxy_pool.get_next_proxy()
-    if not proxy:
-        logging.error("No working proxy available")
-        return {}
-    
-    # Separate symbols by exchange
-    binance_symbols = []
-    bybit_symbols = []
-    
-    for level_info in levels.values():
-        exchange = level_info["exchange"].lower()
-        symbol = level_info["symbol"]
-        
-        if exchange == "binance":
-            binance_symbols.append(symbol.lower())
-        elif exchange == "bybit":
-            bybit_symbols.append(symbol.upper())
-    
-    logging.info(f"Target: {target_completion:.0%} completion rate")
-    logging.info(f"Symbols: {len(binance_symbols)} Binance + {len(bybit_symbols)} Bybit")
-    
-    start_time = time.time()
-    
-    # Run both exchanges concurrently until completion
-    tasks = []
-    if binance_symbols:
-        tasks.append(get_binance_prices_until_complete(binance_symbols, proxy, target_completion))
-    if bybit_symbols:
-        tasks.append(get_bybit_prices_until_complete(bybit_symbols, proxy, target_completion))
-    
-    if not tasks:
-        return {}
-    
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    
-    all_prices = {}
-    for result in results:
-        if isinstance(result, dict):
-            all_prices.update(result)
-        else:
-            logging.warning(f"Task failed: {result}")
-    
-    elapsed_time = time.time() - start_time
-    total_symbols = len(binance_symbols) + len(bybit_symbols)
-    final_completion = len(all_prices) / total_symbols if total_symbols > 0 else 0
-    
-    logging.info(f"FINAL RESULTS: {len(all_prices)}/{total_symbols} symbols ({final_completion:.1%}) in {elapsed_time:.1f}s")
-    
-    return all_prices
-
-async def check_level_hits_complete(levels, proxy_pool):
-    """Level hit checking with completion-based collection"""
-    
-    current_prices = await collect_prices_until_complete(levels, proxy_pool, target_completion=0.90)
-    
+def check_level_hits_simple(levels, binance_client, bybit_client):
+    """Simple level hit checking using existing proven client infrastructure"""
     hits = []
     
+    if not levels:
+        return hits
+    
+    logging.info(f"Checking {len(levels)} levels using existing client infrastructure...")
+    
+    # Group levels by exchange, symbol, and interval for efficient checking
+    symbols_to_check = {}
     for key, level_info in levels.items():
+        exchange = level_info["exchange"]
+        symbol = level_info["symbol"]
+        market = level_info["market"]
+        interval = level_info["interval"]
+        
+        check_key = f"{exchange}_{symbol}_{market}_{interval}"
+        if check_key not in symbols_to_check:
+            symbols_to_check[check_key] = []
+        symbols_to_check[check_key].append(level_info)
+    
+    # Check each unique symbol/timeframe combination
+    for check_key, level_list in symbols_to_check.items():
         try:
-            exchange = level_info["exchange"].lower()
-            symbol = level_info["symbol"]
-            price_key = f"{exchange}_{symbol}"
+            exchange, symbol, market, interval = check_key.split("_", 3)
+            client = binance_client if exchange == "Binance" else bybit_client
             
-            if price_key in current_prices:
-                current_price = current_prices[price_key]
+            # Use existing proven fetch_ohlcv method (gets current price in candle data)
+            df = client.fetch_ohlcv(symbol, interval, limit=2, market=market)
+            
+            if df.empty or len(df) < 1:
+                continue
+            
+            # Get current price from the latest candle
+            current_candle = df.iloc[0]  # Most recent candle
+            current_low = float(current_candle['low'])
+            current_high = float(current_candle['high'])
+            current_close = float(current_candle['close'])
+            
+            # Check all levels for this symbol/timeframe
+            for level_info in level_list:
                 level_price = level_info["price"]
                 
-                tolerance = level_price * 0.002
-                if abs(current_price - level_price) <= tolerance:
+                # Check if current candle range contains the level price
+                if current_low <= level_price <= current_high:
                     hits.append({
                         "exchange": level_info["exchange"],
                         "symbol": symbol,
@@ -370,12 +133,14 @@ async def check_level_hits_complete(levels, proxy_pool):
                         "interval": level_info["interval"],
                         "signal_type": level_info["signal_type"],
                         "level_price": level_price,
-                        "current_price": current_price,
+                        "current_price": current_close,
+                        "current_low": current_low,
+                        "current_high": current_high,
                         "original_timestamp": level_info["timestamp"]
                     })
                     
         except Exception as e:
-            logging.warning(f"Failed to check level hit for {key}: {e}")
+            logging.warning(f"Failed to check levels for {check_key}: {e}")
     
     return hits
 
@@ -1061,30 +826,37 @@ async def main():
     bot = Bot(token=TELEGRAM_TOKEN)
     
     if run_mode == "price_check":
-        # COMPLETION-BASED MODE: Keep running until 90%+ success rate
-        logging.info("🔍 Completion-based price check - targeting 90%+ success rate...")
+        # QUICK MODE: Check level hits using existing proven infrastructure
+        logging.info("🔍 Quick price check mode - using existing client infrastructure...")
     
         levels = load_levels_from_file()
         if not levels:
             logging.info("No levels to check, skipping...")
             return
     
+        # Use the SAME proxy system as full scan
         proxy_url = os.getenv("PROXY_LIST_URL")
         if not proxy_url:
             logging.error("PROXY_LIST_URL environment variable not set")
             return
 
-        proxy_pool = ProxyPool(max_pool_size=3)
+        # Create the SAME proxy pool and clients as full scan
+        proxy_pool = ProxyPool(max_pool_size=25)  # Smaller pool for quick checks
         proxy_pool.populate_from_url(proxy_url)
+        proxy_pool.start_checker()
+
+        binance_client = BinanceClient(proxy_pool)
+        bybit_client = BybitClient(proxy_pool)
     
-        # Use completion-based checking
-        hits = await check_level_hits_complete(levels, proxy_pool)
+        # Use simple level checking with existing proven clients
+        hits = check_level_hits_simple(levels, binance_client, bybit_client)
     
         if hits:
             logging.info(f"🚨 Found {len(hits)} level hits!")
             alert_messages = create_alerts_telegram_report(hits)
-        
-            for msg in alert_messages:
+     
+            # Now it's just one message instead of multiple
+            for msg in alert_messages:  # This will only loop once now
                 try:
                     await bot.send_message(chat_id=int(TELEGRAM_CHAT_ID), text=msg, parse_mode='Markdown')
                     logging.info("Alert message sent successfully.")
