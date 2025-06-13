@@ -15,7 +15,8 @@ from datetime import datetime, timezone, timedelta
 import json
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
+from websockets_proxy import Proxy, proxy_connect
+import websockets
 
 # List of symbols to ignore in all scanning
 IGNORED_SYMBOLS = {
@@ -78,54 +79,184 @@ def load_levels_from_file(filename="detected_levels.json"):
         logging.error(f"Failed to load previous levels: {e}")
         return {}
 
-# --- Simplified Alert System Using Existing Infrastructure ---
+# --- WebSocket Price Collection with Existing Proxy System ---
 
-def check_level_hits_simple(levels, binance_client, bybit_client):
-    """Simple level hit checking using existing proven client infrastructure"""
+async def get_binance_prices_websocket(symbols, proxy_url, timeout=15):
+    """Get Binance prices via WebSocket using existing proxy system"""
+    prices = {}
+    
+    if not symbols or not proxy_url:
+        return prices
+    
+    try:
+        # Create proxy object
+        proxy = Proxy.from_url(proxy_url)
+        
+        # Create WebSocket stream for multiple symbols (limit to 100)
+        symbols_batch = symbols[:100]
+        stream = "/".join([f"{symbol.lower()}@ticker" for symbol in symbols_batch])
+        url = f"wss://stream.binance.com:9443/ws/{stream}"
+        
+        logging.info(f"Connecting to Binance WebSocket via proxy: {proxy_url}")
+        
+        async with proxy_connect(url, proxy=proxy) as websocket:
+            # Set a timeout for data collection
+            start_time = time.time()
+            
+            while time.time() - start_time < timeout:
+                try:
+                    # Wait for message with timeout
+                    message = await asyncio.wait_for(websocket.recv(), timeout=2.0)
+                    data = json.loads(message)
+                    
+                    if isinstance(data, list):
+                        # Handle multiple symbols
+                        for item in data:
+                            if 'c' in item and 's' in item:
+                                symbol = item['s'].upper()
+                                price = float(item['c'])
+                                prices[f"binance_{symbol}"] = price
+                    elif 'c' in data and 's' in data:
+                        # Single symbol
+                        symbol = data['s'].upper()
+                        price = float(data['c'])
+                        prices[f"binance_{symbol}"] = price
+                    
+                    # If we got most of our symbols, break early
+                    if len(prices) >= len(symbols_batch) * 0.8:
+                        break
+                        
+                except asyncio.TimeoutError:
+                    # No new messages, continue collecting
+                    continue
+                except Exception as e:
+                    logging.warning(f"WebSocket message error: {e}")
+                    break
+                    
+    except Exception as e:
+        logging.warning(f"Binance WebSocket connection failed: {e}")
+    
+    logging.info(f"Collected {len(prices)} Binance prices via WebSocket")
+    return prices
+
+async def get_bybit_prices_rest_fast(symbols, proxy_url):
+    """Get Bybit prices via REST (faster than WebSocket setup)"""
+    prices = {}
+    
+    if not symbols or not proxy_url:
+        return prices
+    
+    try:
+        import aiohttp
+        
+        # Parse proxy URL for aiohttp
+        proxy_parts = proxy_url.replace("http://", "").replace("https://", "")
+        
+        connector = aiohttp.ProxyConnector.from_url(proxy_url)
+        timeout = aiohttp.ClientTimeout(total=10)
+        
+        async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
+            url = "https://api.bybit.com/v5/market/tickers"
+            params = {"category": "linear"}
+            
+            async with session.get(url, params=params) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    if "result" in data and "list" in data["result"]:
+                        symbol_set = set(symbols)
+                        
+                        for item in data["result"]["list"]:
+                            symbol = item['symbol'].upper()
+                            if symbol in symbol_set:
+                                prices[f"bybit_{symbol}"] = float(item['lastPrice'])
+                                
+    except Exception as e:
+        logging.warning(f"Bybit REST request failed: {e}")
+    
+    logging.info(f"Collected {len(prices)} Bybit prices via REST")
+    return prices
+
+async def collect_prices_websocket_with_proxy_pool(levels, proxy_pool):
+    """Fast price collection using WebSocket + proven proxy system"""
+    
+    # Get the first working proxy from your proven system
+    proxy = proxy_pool.get_next_proxy()
+    if not proxy:
+        logging.error("No working proxy available")
+        return {}
+    
+    # Separate symbols by exchange
+    binance_symbols = []
+    bybit_symbols = []
+    
+    for level_info in levels.values():
+        exchange = level_info["exchange"].lower()
+        symbol = level_info["symbol"]
+        
+        if exchange == "binance":
+            binance_symbols.append(symbol.lower())
+        elif exchange == "bybit":
+            bybit_symbols.append(symbol.upper())
+    
+    logging.info(f"Collecting prices for {len(binance_symbols)} Binance + {len(bybit_symbols)} Bybit symbols...")
+    
+    start_time = time.time()
+    
+    # Run both exchanges concurrently
+    tasks = []
+    if binance_symbols:
+        tasks.append(get_binance_prices_websocket(binance_symbols, proxy, timeout=10))
+    if bybit_symbols:
+        tasks.append(get_bybit_prices_rest_fast(bybit_symbols, proxy))
+    
+    if not tasks:
+        return {}
+    
+    # Wait for both to complete
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    all_prices = {}
+    for result in results:
+        if isinstance(result, dict):
+            all_prices.update(result)
+        else:
+            logging.warning(f"Task failed: {result}")
+    
+    elapsed_time = time.time() - start_time
+    logging.info(f"Collected {len(all_prices)} prices in {elapsed_time:.1f}s using WebSocket + REST")
+    
+    return all_prices
+
+def check_level_hits_websocket_fast(levels, proxy_pool):
+    """Fast level hit checking using WebSocket with existing proxy system"""
+    
+    # Run the async price collection
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        current_prices = loop.run_until_complete(
+            collect_prices_websocket_with_proxy_pool(levels, proxy_pool)
+        )
+        loop.close()
+    except Exception as e:
+        logging.error(f"Failed to collect prices: {e}")
+        return []
+    
     hits = []
     
-    if not levels:
-        return hits
-    
-    logging.info(f"Checking {len(levels)} levels using existing client infrastructure...")
-    
-    # Group levels by exchange, symbol, and interval for efficient checking
-    symbols_to_check = {}
     for key, level_info in levels.items():
-        exchange = level_info["exchange"]
-        symbol = level_info["symbol"]
-        market = level_info["market"]
-        interval = level_info["interval"]
-        
-        check_key = f"{exchange}_{symbol}_{market}_{interval}"
-        if check_key not in symbols_to_check:
-            symbols_to_check[check_key] = []
-        symbols_to_check[check_key].append(level_info)
-    
-    # Check each unique symbol/timeframe combination
-    for check_key, level_list in symbols_to_check.items():
         try:
-            exchange, symbol, market, interval = check_key.split("_", 3)
-            client = binance_client if exchange == "Binance" else bybit_client
+            exchange = level_info["exchange"].lower()
+            symbol = level_info["symbol"]
+            price_key = f"{exchange}_{symbol}"
             
-            # Use existing proven fetch_ohlcv method (gets current price in candle data)
-            df = client.fetch_ohlcv(symbol, interval, limit=2, market=market)
-            
-            if df.empty or len(df) < 1:
-                continue
-            
-            # Get current price from the latest candle
-            current_candle = df.iloc[0]  # Most recent candle
-            current_low = float(current_candle['low'])
-            current_high = float(current_candle['high'])
-            current_close = float(current_candle['close'])
-            
-            # Check all levels for this symbol/timeframe
-            for level_info in level_list:
+            if price_key in current_prices:
+                current_price = current_prices[price_key]
                 level_price = level_info["price"]
                 
-                # Check if current candle range contains the level price
-                if current_low <= level_price <= current_high:
+                # Check if current price is very close to level (within 0.2% tolerance)
+                tolerance = level_price * 0.002  # 0.2% tolerance
+                if abs(current_price - level_price) <= tolerance:
                     hits.append({
                         "exchange": level_info["exchange"],
                         "symbol": symbol,
@@ -133,14 +264,12 @@ def check_level_hits_simple(levels, binance_client, bybit_client):
                         "interval": level_info["interval"],
                         "signal_type": level_info["signal_type"],
                         "level_price": level_price,
-                        "current_price": current_close,
-                        "current_low": current_low,
-                        "current_high": current_high,
+                        "current_price": current_price,
                         "original_timestamp": level_info["timestamp"]
                     })
                     
         except Exception as e:
-            logging.warning(f"Failed to check levels for {check_key}: {e}")
+            logging.warning(f"Failed to check level hit for {key}: {e}")
     
     return hits
 
@@ -826,37 +955,32 @@ async def main():
     bot = Bot(token=TELEGRAM_TOKEN)
     
     if run_mode == "price_check":
-        # QUICK MODE: Check level hits using existing proven infrastructure
-        logging.info("🔍 Quick price check mode - using existing client infrastructure...")
+        # QUICK MODE: Check level hits using WebSocket with existing proxy system
+        logging.info("🔍 Quick price check mode - using WebSocket with proven proxy system...")
     
         levels = load_levels_from_file()
         if not levels:
             logging.info("No levels to check, skipping...")
             return
     
-        # Use the SAME proxy system as full scan
+        # Use your existing proven proxy system
         proxy_url = os.getenv("PROXY_LIST_URL")
         if not proxy_url:
             logging.error("PROXY_LIST_URL environment variable not set")
             return
 
-        # Create the SAME proxy pool and clients as full scan
-        proxy_pool = ProxyPool(max_pool_size=25)  # Smaller pool for quick checks
+        # Create small proxy pool using your proven system
+        proxy_pool = ProxyPool(max_pool_size=3)  # Just need a few working proxies
         proxy_pool.populate_from_url(proxy_url)
-        proxy_pool.start_checker()
-
-        binance_client = BinanceClient(proxy_pool)
-        bybit_client = BybitClient(proxy_pool)
     
-        # Use simple level checking with existing proven clients
-        hits = check_level_hits_simple(levels, binance_client, bybit_client)
+        # Use WebSocket-based level checking
+        hits = check_level_hits_websocket_fast(levels, proxy_pool)
     
         if hits:
             logging.info(f"🚨 Found {len(hits)} level hits!")
             alert_messages = create_alerts_telegram_report(hits)
-     
-            # Now it's just one message instead of multiple
-            for msg in alert_messages:  # This will only loop once now
+        
+            for msg in alert_messages:
                 try:
                     await bot.send_message(chat_id=int(TELEGRAM_CHAT_ID), text=msg, parse_mode='Markdown')
                     logging.info("Alert message sent successfully.")
