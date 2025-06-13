@@ -15,7 +15,6 @@ from datetime import datetime, timezone, timedelta
 import json
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import random
 
 
 # List of symbols to ignore in all scanning
@@ -79,258 +78,54 @@ def load_levels_from_file(filename="detected_levels.json"):
         logging.error(f"Failed to load previous levels: {e}")
         return {}
 
-# --- Enhanced Price Collection with Retry Logic ---
+# --- Simplified Alert System Using Existing Infrastructure ---
 
-def test_proxy_speed_for_exchanges(proxy, timeout=8):
-    """Test proxy speed for both Binance and Bybit APIs with longer timeout"""
-    try:
-        proxies = {"http": proxy, "https": proxy}
-        
-        # Test Binance API speed
-        start_time = time.time()
-        binance_response = requests.get(
-            "https://api.binance.com/api/v3/ping", 
-            proxies=proxies, 
-            timeout=timeout
-        )
-        binance_time = time.time() - start_time
-        
-        if binance_response.status_code != 200:
-            return None
-        
-        # Test Bybit API speed  
-        start_time = time.time()
-        bybit_response = requests.get(
-            "https://api.bybit.com/v5/market/time",
-            proxies=proxies,
-            timeout=timeout
-        )
-        bybit_time = time.time() - start_time
-        
-        if bybit_response.status_code != 200:
-            return None
-            
-        # Return average response time
-        avg_time = (binance_time + bybit_time) / 2
-        return {
-            "proxy": proxy,
-            "avg_response_time": avg_time,
-            "binance_time": binance_time,
-            "bybit_time": bybit_time
-        }
-        
-    except Exception as e:
-        return None
-
-def find_fastest_working_proxy(proxy_pool, max_test=5):
-    """Find the fastest working proxy for both exchanges"""
-    proxies_to_test = proxy_pool.proxies[:max_test]  # Test fewer proxies for speed
-    
-    if not proxies_to_test:
-        logging.error("No proxies available to test")
-        return None
-    
-    logging.info(f"Testing {len(proxies_to_test)} proxies for speed...")
-    
-    results = []
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        future_to_proxy = {
-            executor.submit(test_proxy_speed_for_exchanges, proxy): proxy 
-            for proxy in proxies_to_test
-        }
-        
-        for future in as_completed(future_to_proxy):
-            result = future.result()
-            if result:
-                results.append(result)
-    
-    if not results:
-        logging.error("No working proxies found for exchanges")
-        return None
-    
-    # Sort by average response time (fastest first)
-    results.sort(key=lambda x: x['avg_response_time'])
-    fastest = results[0]
-    
-    logging.info(f"Fastest proxy: {fastest['proxy']} (avg: {fastest['avg_response_time']:.2f}s)")
-    return fastest['proxy']
-
-def make_request_with_retry(url, proxies, params=None, max_retries=3, timeout=15):
-    """Make HTTP request with retry logic and exponential backoff"""
-    for attempt in range(max_retries):
-        try:
-            # Add jitter to avoid thundering herd
-            if attempt > 0:
-                delay = (2 ** attempt) + random.uniform(0, 1)
-                logging.info(f"Retrying in {delay:.1f}s (attempt {attempt + 1}/{max_retries})")
-                time.sleep(delay)
-            
-            response = requests.get(
-                url, 
-                proxies=proxies, 
-                params=params,
-                timeout=timeout,
-                headers={
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                }
-            )
-            
-            if response.status_code == 200:
-                return response
-            else:
-                logging.warning(f"HTTP {response.status_code} on attempt {attempt + 1}")
-                
-        except requests.exceptions.ReadTimeout:
-            logging.warning(f"Read timeout on attempt {attempt + 1}/{max_retries}")
-        except requests.exceptions.ConnectTimeout:
-            logging.warning(f"Connect timeout on attempt {attempt + 1}/{max_retries}")
-        except requests.exceptions.ConnectionError as e:
-            logging.warning(f"Connection error on attempt {attempt + 1}/{max_retries}: {e}")
-        except Exception as e:
-            logging.warning(f"Request error on attempt {attempt + 1}/{max_retries}: {e}")
-    
-    return None
-
-def get_binance_prices_batch_retry(symbols, proxy):
-    """Get Binance prices with retry logic and smaller batches"""
-    prices = {}
-    if not symbols:
-        return prices
-    
-    proxies = {"http": proxy, "https": proxy}
-    
-    # Try getting specific symbols first (more reliable than all tickers)
-    symbol_chunks = [symbols[i:i+50] for i in range(0, len(symbols), 50)]  # Process in chunks of 50
-    
-    for chunk in symbol_chunks:
-        try:
-            # Use ticker/price endpoint with specific symbols
-            symbols_param = '["' + '","'.join([s.upper() for s in chunk]) + '"]'
-            url = "https://api.binance.com/api/v3/ticker/price"
-            params = {"symbols": symbols_param}
-            
-            response = make_request_with_retry(url, proxies, params, max_retries=3, timeout=20)
-            
-            if response:
-                data = response.json()
-                for item in data:
-                    symbol = item['symbol'].lower()
-                    if symbol in symbols:
-                        prices[f"binance_{symbol.upper()}"] = float(item['price'])
-            
-            # Small delay between chunks to avoid rate limiting
-            time.sleep(0.5)
-            
-        except Exception as e:
-            logging.warning(f"Failed to get Binance prices for chunk: {e}")
-    
-    logging.info(f"Successfully retrieved {len(prices)} Binance prices")
-    return prices
-
-def get_bybit_prices_batch_retry(symbols, proxy):
-    """Get Bybit prices with retry logic"""
-    prices = {}
-    if not symbols:
-        return prices
-    
-    proxies = {"http": proxy, "https": proxy}
-    
-    try:
-        # Get all linear tickers - Bybit endpoint is usually faster
-        url = "https://api.bybit.com/v5/market/tickers"
-        params = {"category": "linear"}
-        
-        response = make_request_with_retry(url, proxies, params, max_retries=3, timeout=20)
-        
-        if response:
-            data = response.json()
-            if "result" in data and "list" in data["result"]:
-                symbol_set = set(symbols)
-                
-                for item in data["result"]["list"]:
-                    symbol = item['symbol'].upper()
-                    if symbol in symbol_set:
-                        prices[f"bybit_{symbol}"] = float(item['lastPrice'])
-                        
-    except Exception as e:
-        logging.warning(f"Failed to get Bybit prices: {e}")
-    
-    logging.info(f"Successfully retrieved {len(prices)} Bybit prices")
-    return prices
-
-def collect_all_prices_fast_retry(levels, proxy_pool, timeout=25):
-    """Fast price collection with retry logic and fallback proxies"""
-    # Get top 3 fastest proxies as fallbacks
-    proxy_pool_subset = ProxyPool(max_pool_size=3)
-    proxy_pool_subset.proxies = proxy_pool.proxies[:3]
-    
-    # Try up to 3 different proxies
-    for proxy_attempt in range(min(3, len(proxy_pool.proxies))):
-        fastest_proxy = proxy_pool.proxies[proxy_attempt]
-        logging.info(f"Attempting price collection with proxy {proxy_attempt + 1}: {fastest_proxy}")
-        
-        # Separate symbols by exchange
-        binance_symbols = []
-        bybit_symbols = []
-        
-        for level_info in levels.values():
-            exchange = level_info["exchange"].lower()
-            symbol = level_info["symbol"]
-            
-            if exchange == "binance":
-                binance_symbols.append(symbol.lower())
-            elif exchange == "bybit":
-                bybit_symbols.append(symbol.upper())
-        
-        logging.info(f"Collecting prices for {len(binance_symbols)} Binance + {len(bybit_symbols)} Bybit symbols...")
-        
-        start_time = time.time()
-        all_prices = {}
-        
-        # Try to get prices from both exchanges
-        binance_prices = get_binance_prices_batch_retry(binance_symbols, fastest_proxy)
-        bybit_prices = get_bybit_prices_batch_retry(bybit_symbols, fastest_proxy)
-        
-        all_prices.update(binance_prices)
-        all_prices.update(bybit_prices)
-        
-        elapsed_time = time.time() - start_time
-        success_rate = len(all_prices) / (len(binance_symbols) + len(bybit_symbols)) if (len(binance_symbols) + len(bybit_symbols)) > 0 else 0
-        
-        logging.info(f"Collected {len(all_prices)} prices in {elapsed_time:.1f}s (success rate: {success_rate:.1%})")
-        
-        # If we got reasonable success rate, return results
-        if success_rate > 0.3:  # At least 30% success rate
-            return all_prices
-        else:
-            logging.warning(f"Low success rate ({success_rate:.1%}), trying next proxy...")
-            proxy_pool.mark_proxy_failure(fastest_proxy)
-    
-    logging.error("Failed to collect prices with all available proxies")
-    return {}
-
-def check_level_hits_fast_retry(levels, proxy_pool):
-    """Fast level hit checking with retry logic"""
-    current_prices = collect_all_prices_fast_retry(levels, proxy_pool)
+def check_level_hits_simple(levels, binance_client, bybit_client):
+    """Simple level hit checking using existing proven client infrastructure"""
     hits = []
     
-    if not current_prices:
-        logging.warning("No prices collected, cannot check level hits")
+    if not levels:
         return hits
     
+    logging.info(f"Checking {len(levels)} levels using existing client infrastructure...")
+    
+    # Group levels by exchange, symbol, and interval for efficient checking
+    symbols_to_check = {}
     for key, level_info in levels.items():
+        exchange = level_info["exchange"]
+        symbol = level_info["symbol"]
+        market = level_info["market"]
+        interval = level_info["interval"]
+        
+        check_key = f"{exchange}_{symbol}_{market}_{interval}"
+        if check_key not in symbols_to_check:
+            symbols_to_check[check_key] = []
+        symbols_to_check[check_key].append(level_info)
+    
+    # Check each unique symbol/timeframe combination
+    for check_key, level_list in symbols_to_check.items():
         try:
-            exchange = level_info["exchange"].lower()
-            symbol = level_info["symbol"]
-            price_key = f"{exchange}_{symbol}"
+            exchange, symbol, market, interval = check_key.split("_", 3)
+            client = binance_client if exchange == "Binance" else bybit_client
             
-            if price_key in current_prices:
-                current_price = current_prices[price_key]
+            # Use existing proven fetch_ohlcv method (gets current price in candle data)
+            df = client.fetch_ohlcv(symbol, interval, limit=2, market=market)
+            
+            if df.empty or len(df) < 1:
+                continue
+            
+            # Get current price from the latest candle
+            current_candle = df.iloc[0]  # Most recent candle
+            current_low = float(current_candle['low'])
+            current_high = float(current_candle['high'])
+            current_close = float(current_candle['close'])
+            
+            # Check all levels for this symbol/timeframe
+            for level_info in level_list:
                 level_price = level_info["price"]
                 
-                # Check if current price is very close to level (within 0.2% tolerance)
-                tolerance = level_price * 0.002  # 0.2% tolerance
-                if abs(current_price - level_price) <= tolerance:
+                # Check if current candle range contains the level price
+                if current_low <= level_price <= current_high:
                     hits.append({
                         "exchange": level_info["exchange"],
                         "symbol": symbol,
@@ -338,17 +133,19 @@ def check_level_hits_fast_retry(levels, proxy_pool):
                         "interval": level_info["interval"],
                         "signal_type": level_info["signal_type"],
                         "level_price": level_price,
-                        "current_price": current_price,
+                        "current_price": current_close,
+                        "current_low": current_low,
+                        "current_high": current_high,
                         "original_timestamp": level_info["timestamp"]
                     })
                     
         except Exception as e:
-            logging.warning(f"Failed to check level hit for {key}: {e}")
+            logging.warning(f"Failed to check levels for {check_key}: {e}")
     
     return hits
 
 def create_alerts_telegram_report(hits):
-    """Create telegram message for level hits/alerts"""
+    """Create telegram message for level hits/alerts - simplified version"""
     if not hits:
         return []
     
@@ -358,19 +155,6 @@ def create_alerts_telegram_report(hits):
     current_time = utc_now.astimezone(utc_plus_3)
     timestamp = current_time.strftime("%Y-%m-%d %H:%M:%S UTC+3")
     
-    # Group by exchange and timeframe
-    exchanges = {}
-    for hit in hits:
-        exchange = hit["exchange"]
-        interval = hit["interval"]
-        
-        if exchange not in exchanges:
-            exchanges[exchange] = {}
-        if interval not in exchanges[exchange]:
-            exchanges[exchange][interval] = {"bullish": [], "bearish": []}
-        
-        exchanges[exchange][interval][hit["signal_type"]].append(hit)
-    
     messages = []
     
     # Create header message
@@ -379,39 +163,48 @@ def create_alerts_telegram_report(hits):
     header += f"🕒 {timestamp}"
     messages.append(header)
     
-    # Create detailed messages
-    for exchange in ["Binance", "Bybit"]:
-        if exchange not in exchanges:
+    # Group by timeframe and exchange
+    timeframes = {}
+    for hit in hits:
+        interval = hit["interval"]
+        exchange = hit["exchange"]
+        
+        if interval not in timeframes:
+            timeframes[interval] = {"Binance": {"bullish": [], "bearish": []}, "Bybit": {"bullish": [], "bearish": []}}
+        
+        timeframes[interval][exchange][hit["signal_type"]].append(hit)
+    
+    # Create messages by timeframe
+    for interval in ["1M", "1w", "1d"]:
+        if interval not in timeframes:
             continue
             
-        for interval in ["1M", "1w", "1d"]:
-            if interval not in exchanges[exchange]:
-                continue
-                
-            current_msg = f"📅 *{interval} - {exchange}*\n\n"
-            
-            bullish_hits = exchanges[exchange][interval]["bullish"]
-            bearish_hits = exchanges[exchange][interval]["bearish"]
-            
-            if bullish_hits:
-                current_msg += f"🍏 *Bullish Alerts ({len(bullish_hits)})*\n"
-                for hit in bullish_hits:
-                    price_diff = abs(hit['current_price'] - hit['level_price'])
-                    price_diff_pct = (price_diff / hit['level_price']) * 100
-                    current_msg += f"• {hit['symbol']} @ ${hit['level_price']:.6f} (Current: ${hit['current_price']:.6f})\n"
-                current_msg += "\n"
-            
-            if bearish_hits:
-                current_msg += f"🔻 *Bearish Alerts ({len(bearish_hits)})*\n"
-                for hit in bearish_hits:
-                    price_diff = abs(hit['current_price'] - hit['level_price'])
-                    price_diff_pct = (price_diff / hit['level_price']) * 100
-                    current_msg += f"• {hit['symbol']} @ ${hit['level_price']:.6f} (Current: ${hit['current_price']:.6f})\n"
-                current_msg += "\n"
+        current_msg = f"📅 *{interval} Alerts*\n\n"
+        has_content = False
+        
+        for exchange in ["Binance", "Bybit"]:
+            bullish_hits = timeframes[interval][exchange]["bullish"]
+            bearish_hits = timeframes[interval][exchange]["bearish"]
             
             if bullish_hits or bearish_hits:
-                current_msg += "——————————————————\n"
-                messages.append(current_msg)
+                current_msg += f"*{exchange}*:\n"
+                has_content = True
+                
+                if bullish_hits:
+                    current_msg += f"🍏 *Bullish ({len(bullish_hits)})*\n"
+                    for hit in bullish_hits:
+                        current_msg += f"• {hit['symbol']} @ ${hit['level_price']:.6f}\n"
+                    current_msg += "\n"
+                
+                if bearish_hits:
+                    current_msg += f"🔻 *Bearish ({len(bearish_hits)})*\n"
+                    for hit in bearish_hits:
+                        current_msg += f"• {hit['symbol']} @ ${hit['level_price']:.6f}\n"
+                    current_msg += "\n"
+        
+        if has_content:
+            current_msg += "——————————————————\n"
+            messages.append(current_msg)
     
     return messages
 
@@ -1041,35 +834,42 @@ async def main():
     bot = Bot(token=TELEGRAM_TOKEN)
     
     if run_mode == "price_check":
-        # QUICK MODE: Only check if levels got hit using fast REST API approach
-        logging.info("🔍 Quick price check mode - checking level hits via fast REST API...")
+        # QUICK MODE: Check level hits using existing proven infrastructure
+        logging.info("🔍 Quick price check mode - using existing client infrastructure...")
     
         levels = load_levels_from_file()
         if not levels:
             logging.info("No levels to check, skipping...")
             return
     
-        # Create a small proxy pool for price checking
+        # Use the SAME proxy system as full scan
         proxy_url = os.getenv("PROXY_LIST_URL")
-        if proxy_url:
-            proxy_pool = ProxyPool(max_pool_size=5)  # Small pool for quick checks
-            proxy_pool.populate_from_url(proxy_url)
-        
-            hits = check_level_hits_fast_retry(levels, proxy_pool)
-        
-            if hits:
-                logging.info(f"🚨 Found {len(hits)} level hits!")
-                alert_messages = create_alerts_telegram_report(hits)
-                for msg in alert_messages:
-                    try:
-                        await bot.send_message(chat_id=int(TELEGRAM_CHAT_ID), text=msg, parse_mode='Markdown')
-                        await asyncio.sleep(0.5)  # Rate limiting
-                    except Exception as e:
-                        logging.error(f"Failed to send alert: {e}")
-            else:
-                logging.info("✅ No level hits detected")
+        if not proxy_url:
+            logging.error("PROXY_LIST_URL environment variable not set")
+            return
+
+        # Create the SAME proxy pool and clients as full scan
+        proxy_pool = ProxyPool(max_pool_size=10)  # Smaller pool for quick checks
+        proxy_pool.populate_from_url(proxy_url)
+        proxy_pool.start_checker()
+
+        binance_client = BinanceClient(proxy_pool)
+        bybit_client = BybitClient(proxy_pool)
+    
+        # Use simple level checking with existing proven clients
+        hits = check_level_hits_simple(levels, binance_client, bybit_client)
+    
+        if hits:
+            logging.info(f"🚨 Found {len(hits)} level hits!")
+            alert_messages = create_alerts_telegram_report(hits)
+            for msg in alert_messages:
+                try:
+                    await bot.send_message(chat_id=int(TELEGRAM_CHAT_ID), text=msg, parse_mode='Markdown')
+                    await asyncio.sleep(0.5)
+                except Exception as e:
+                    logging.error(f"Failed to send alert: {e}")
         else:
-            logging.error("PROXY_LIST_URL not set for price check mode")
+            logging.info("✅ No level hits detected")
 
     else:
         # FULL SCAN MODE: Do complete pattern detection
