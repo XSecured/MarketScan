@@ -1,429 +1,6 @@
 {
-  "last_updated": "2025-06-22T02:28:22.825550+00:00",
+  "last_updated": "2025-06-23T02:27:18.043667+00:00",
   "levels": {
-    "Binance_LISTAUSDT_perp_1w": {
-      "exchange": "Binance",
-      "symbol": "LISTAUSDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 0.2285,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:24.359366+00:00"
-    },
-    "Binance_AKTUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "AKTUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 1.462,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:24.926111+00:00"
-    },
-    "Binance_KAVAUSDT_perp_1w": {
-      "exchange": "Binance",
-      "symbol": "KAVAUSDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 0.4486,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:25.930709+00:00"
-    },
-    "Binance_IOTAUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "IOTAUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.2064,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:28.289469+00:00"
-    },
-    "Binance_QNTUSDT_perp_1w": {
-      "exchange": "Binance",
-      "symbol": "QNTUSDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 119.37,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:29.791722+00:00"
-    },
-    "Binance_DRIFTUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "DRIFTUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.7019,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:30.796447+00:00"
-    },
-    "Binance_EGLDUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "EGLDUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 17.208,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:32.129742+00:00"
-    },
-    "Binance_WAXPUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "WAXPUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.02434,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:32.699446+00:00"
-    },
-    "Binance_ZECUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "ZECUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 36.0,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:28:34.198939+00:00"
-    },
-    "Binance_ZRXUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "ZRXUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.2777,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:34.768128+00:00"
-    },
-    "Binance_NOTUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "NOTUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.002607,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:35.735070+00:00"
-    },
-    "Binance_ETHUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "ETHUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 1792.71,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:28:37.066149+00:00"
-    },
-    "Binance_FLMUSDT_perp_1w": {
-      "exchange": "Binance",
-      "symbol": "FLMUSDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 0.0391,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:38.570655+00:00"
-    },
-    "Binance_GPSUSDT_perp_1d": {
-      "exchange": "Binance",
-      "symbol": "GPSUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.0282,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:39.543812+00:00"
-    },
-    "Binance_BANANAS31USDT_perp_1d": {
-      "exchange": "Binance",
-      "symbol": "BANANAS31USDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.005512,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:28:40.875864+00:00"
-    },
-    "Binance_COSUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "COSUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.003652,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:41.492723+00:00"
-    },
-    "Binance_BATUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "BATUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.1523,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:42.995484+00:00"
-    },
-    "Binance_STORJUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "STORJUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.3063,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:43.569711+00:00"
-    },
-    "Binance_SPKUSDT_perp_1d": {
-      "exchange": "Binance",
-      "symbol": "SPKUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.04076,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:28:44.543116+00:00"
-    },
-    "Binance_DENTUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "DENTUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.000819,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:45.876827+00:00"
-    },
-    "Binance_FORMUSDT_perp_1d": {
-      "exchange": "Binance",
-      "symbol": "FORMUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 2.418,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:47.378072+00:00"
-    },
-    "Binance_RAREUSDT_perp_1w": {
-      "exchange": "Binance",
-      "symbol": "RAREUSDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 0.05702,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:48.352441+00:00"
-    },
-    "Binance_ARCUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "ARCUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.05911,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:49.685384+00:00"
-    },
-    "Binance_POWRUSDT_perp_1w": {
-      "exchange": "Binance",
-      "symbol": "POWRUSDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 0.1624,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:50.259950+00:00"
-    },
-    "Binance_HIVEUSDT_perp_1w": {
-      "exchange": "Binance",
-      "symbol": "HIVEUSDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 0.2363,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:51.755285+00:00"
-    },
-    "Binance_ATHUSDT_perp_1d": {
-      "exchange": "Binance",
-      "symbol": "ATHUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.0339,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:52.332580+00:00"
-    },
-    "Binance_GASUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "GASUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 3.291,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:53.339670+00:00"
-    },
-    "Binance_ONTUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "ONTUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.1536,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:54.676343+00:00"
-    },
-    "Binance_YGGUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "YGGUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.2091,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:56.180226+00:00"
-    },
-    "Binance_IOSTUSDT_perp_1w": {
-      "exchange": "Binance",
-      "symbol": "IOSTUSDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 0.003923,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:57.205238+00:00"
-    },
-    "Binance_WUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "WUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.0873,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:58.552417+00:00"
-    },
-    "Binance_TRUMPUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "TRUMPUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 13.158,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:28:59.136844+00:00"
-    },
-    "Binance_FHEUSDT_perp_1d": {
-      "exchange": "Binance",
-      "symbol": "FHEUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.07297,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:29:00.646757+00:00"
-    },
-    "Binance_BROCCOLIF3BUSDT_perp_1d": {
-      "exchange": "Binance",
-      "symbol": "BROCCOLIF3BUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.008797,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:01.228375+00:00"
-    },
-    "Binance_B2USDT_perp_1w": {
-      "exchange": "Binance",
-      "symbol": "B2USDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 0.5343,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:03.004889+00:00"
-    },
-    "Binance_EIGENUSDT_perp_1w": {
-      "exchange": "Binance",
-      "symbol": "EIGENUSDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 1.396,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:04.339585+00:00"
-    },
-    "Binance_BABYUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "BABYUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.10508,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:05.841351+00:00"
-    },
-    "Binance_LAYERUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "LAYERUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 3.0374,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:07.030461+00:00"
-    },
-    "Binance_AI16ZUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "AI16ZUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.2761,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:08.369762+00:00"
-    },
-    "Binance_BSVUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "BSVUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 37.95,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:08.934095+00:00"
-    },
-    "Binance_PORTALUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "PORTALUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.0894,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:10.437936+00:00"
-    },
-    "Binance_FLOWUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "FLOWUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.402,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:11.010095+00:00"
-    },
-    "Binance_HIFIUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "HIFIUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.2682,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:12.540223+00:00"
-    },
-    "Binance_DUSKUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "DUSKUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.0861,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:13.875444+00:00"
-    },
-    "Binance_ARKUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "ARKUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.4368,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:15.385998+00:00"
-    },
-    "Binance_GUSDT_perp_1w": {
-      "exchange": "Binance",
-      "symbol": "GUSDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 0.01308,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:16.539512+00:00"
-    },
-    "Binance_STEEMUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "STEEMUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.15081,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:17.886817+00:00"
-    },
     "Binance_BRETTUSDT_perp_1M": {
       "exchange": "Binance",
       "symbol": "BRETTUSDT",
@@ -431,376 +8,7 @@
       "interval": "1M",
       "price": 0.06217,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:18.521541+00:00"
-    },
-    "Binance_TUTUSDT_perp_1d": {
-      "exchange": "Binance",
-      "symbol": "TUTUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.0389,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:20.019973+00:00"
-    },
-    "Binance_KNCUSDT_perp_1w": {
-      "exchange": "Binance",
-      "symbol": "KNCUSDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 0.3406,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:20.587846+00:00"
-    },
-    "Binance_UMAUSDT_perp_1w": {
-      "exchange": "Binance",
-      "symbol": "UMAUSDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 1.37,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:21.744062+00:00"
-    },
-    "Binance_GMTUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "GMTUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.05767,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:23.088966+00:00"
-    },
-    "Binance_ALCHUSDT_perp_1w": {
-      "exchange": "Binance",
-      "symbol": "ALCHUSDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 0.13494,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:24.730850+00:00"
-    },
-    "Binance_VVVUSDT_perp_1d": {
-      "exchange": "Binance",
-      "symbol": "VVVUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 3.051,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:27.265016+00:00"
-    },
-    "Binance_SCRTUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "SCRTUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.2133,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:28.615592+00:00"
-    },
-    "Binance_JELLYJELLYUSDT_perp_1w": {
-      "exchange": "Binance",
-      "symbol": "JELLYJELLYUSDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 0.02395,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:29:29.195013+00:00"
-    },
-    "Binance_ACHUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "ACHUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.027106,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:30.694165+00:00"
-    },
-    "Binance_QUICKUSDT_perp_1d": {
-      "exchange": "Binance",
-      "symbol": "QUICKUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.02366,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:31.313131+00:00"
-    },
-    "Binance_TRUUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "TRUUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.04021,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:32.306466+00:00"
-    },
-    "Binance_SHELLUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "SHELLUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.2269,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:33.635885+00:00"
-    },
-    "Binance_SPELLUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "SPELLUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.0005887,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:35.140702+00:00"
-    },
-    "Binance_AXLUSDT_perp_1w": {
-      "exchange": "Binance",
-      "symbol": "AXLUSDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 0.3216,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:29:36.132132+00:00"
-    },
-    "Binance_MANAUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "MANAUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.3155,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:37.467895+00:00"
-    },
-    "Binance_KERNELUSDT_perp_1d": {
-      "exchange": "Binance",
-      "symbol": "KERNELUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.1139,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:38.039095+00:00"
-    },
-    "Binance_ENAUSDT_perp_1w": {
-      "exchange": "Binance",
-      "symbol": "ENAUSDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 0.3167,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:39.539108+00:00"
-    },
-    "Binance_PROMPTUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "PROMPTUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.3934,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:40.109475+00:00"
-    },
-    "Binance_SCRUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "SCRUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.3493,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:41.084981+00:00"
-    },
-    "Binance_SWELLUSDT_perp_1d": {
-      "exchange": "Binance",
-      "symbol": "SWELLUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.0091,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:42.685357+00:00"
-    },
-    "Binance_APTUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "APTUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 5.3436,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:44.189622+00:00"
-    },
-    "Binance_ATAUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "ATAUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.0615,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:45.166601+00:00"
-    },
-    "Binance_1000WHYUSDT_perp_1d": {
-      "exchange": "Binance",
-      "symbol": "1000WHYUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 2.72e-05,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:46.508475+00:00"
-    },
-    "Binance_ATAUSDT_perp_1w": {
-      "exchange": "Binance",
-      "symbol": "ATAUSDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 0.0452,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:47.105548+00:00"
-    },
-    "Binance_SIGNUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "SIGNUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.09541,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:48.610348+00:00"
-    },
-    "Binance_PORT3USDT_perp_1w": {
-      "exchange": "Binance",
-      "symbol": "PORT3USDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 0.04959,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:49.185059+00:00"
-    },
-    "Binance_SIGNUSDT_perp_1d": {
-      "exchange": "Binance",
-      "symbol": "SIGNUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.06391,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:29:50.158860+00:00"
-    },
-    "Binance_AERGOUSDT_perp_1d": {
-      "exchange": "Binance",
-      "symbol": "AERGOUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.13292,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:51.497723+00:00"
-    },
-    "Binance_MOCAUSDT_perp_1w": {
-      "exchange": "Binance",
-      "symbol": "MOCAUSDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 0.0848,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:53.005864+00:00"
-    },
-    "Binance_BANKUSDT_perp_1d": {
-      "exchange": "Binance",
-      "symbol": "BANKUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.044899,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:53.990790+00:00"
-    },
-    "Binance_NMRUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "NMRUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 9.174,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:55.322703+00:00"
-    },
-    "Binance_ANKRUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "ANKRUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.01979,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:55.887821+00:00"
-    },
-    "Binance_AEVOUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "AEVOUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.1116,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:57.390059+00:00"
-    },
-    "Binance_ENJUSDT_perp_1w": {
-      "exchange": "Binance",
-      "symbol": "ENJUSDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 0.0751,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:57.962764+00:00"
-    },
-    "Binance_AWEUSDT_perp_1d": {
-      "exchange": "Binance",
-      "symbol": "AWEUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.053191,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:29:58.944348+00:00"
-    },
-    "Binance_RENDERUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "RENDERUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 4.455,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:00.279955+00:00"
-    },
-    "Binance_SYSUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "SYSUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.05126,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:01.789445+00:00"
-    },
-    "Binance_AEVOUSDT_perp_1w": {
-      "exchange": "Binance",
-      "symbol": "AEVOUSDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 0.0978,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:02.782899+00:00"
-    },
-    "Binance_RLCUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "RLCUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 1.2189,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:04.125889+00:00"
-    },
-    "Binance_HYPERUSDT_perp_1d": {
-      "exchange": "Binance",
-      "symbol": "HYPERUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.1078,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:04.813062+00:00"
-    },
-    "Binance_SFPUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "SFPUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.5275,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:06.314584+00:00"
+      "timestamp": "2025-06-23T02:27:19.565706+00:00"
     },
     "Binance_NFPUSDT_perp_1M": {
       "exchange": "Binance",
@@ -809,124 +17,16 @@
       "interval": "1M",
       "price": 0.0878,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:06.898851+00:00"
+      "timestamp": "2025-06-23T02:27:20.569456+00:00"
     },
-    "Binance_APEUSDT_perp_1w": {
+    "Binance_EGLDUSDT_perp_1M": {
       "exchange": "Binance",
-      "symbol": "APEUSDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 0.7073,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:07.880471+00:00"
-    },
-    "Binance_BMTUSDT_perp_1d": {
-      "exchange": "Binance",
-      "symbol": "BMTUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.13852,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:09.232470+00:00"
-    },
-    "Binance_BICOUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "BICOUSDT",
+      "symbol": "EGLDUSDT",
       "market": "perp",
       "interval": "1M",
-      "price": 0.1335,
+      "price": 17.208,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:10.745860+00:00"
-    },
-    "Binance_ONEUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "ONEUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.01343,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:11.741821+00:00"
-    },
-    "Binance_ZEREBROUSDT_perp_1d": {
-      "exchange": "Binance",
-      "symbol": "ZEREBROUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.0293,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:13.070841+00:00"
-    },
-    "Binance_RSRUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "RSRUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.009029,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:13.646661+00:00"
-    },
-    "Binance_BNBUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "BNBUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 599.21,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:30:15.150242+00:00"
-    },
-    "Binance_ACEUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "ACEUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.6762,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:15.722760+00:00"
-    },
-    "Binance_FIOUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "FIOUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.01858,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:16.717037+00:00"
-    },
-    "Binance_SXPUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "SXPUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.2036,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:18.047106+00:00"
-    },
-    "Binance_FISUSDT_perp_1M": {
-      "exchange": "Binance",
-      "symbol": "FISUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.2495,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:19.547234+00:00"
-    },
-    "Binance_CYBERUSDT_perp_1d": {
-      "exchange": "Binance",
-      "symbol": "CYBERUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 1.33,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:20.543943+00:00"
-    },
-    "Binance_XCNUSDT_perp_1d": {
-      "exchange": "Binance",
-      "symbol": "XCNUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.01313,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:30:21.873994+00:00"
+      "timestamp": "2025-06-23T02:27:22.024566+00:00"
     },
     "Binance_ALGOUSDT_perp_1M": {
       "exchange": "Binance",
@@ -935,43 +35,817 @@
       "interval": "1M",
       "price": 0.2199,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:22.461244+00:00"
+      "timestamp": "2025-06-23T02:27:23.378000+00:00"
     },
-    "Binance_SXPUSDT_perp_1d": {
+    "Binance_ALTUSDT_perp_1w": {
+      "exchange": "Binance",
+      "symbol": "ALTUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 0.02511,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:27:24.876436+00:00"
+    },
+    "Binance_AEVOUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "AEVOUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.1116,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:27:25.865564+00:00"
+    },
+    "Binance_PORTALUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "PORTALUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.0894,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:27:27.201368+00:00"
+    },
+    "Binance_BABYUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "BABYUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.10508,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:27:28.695528+00:00"
+    },
+    "Binance_FARTCOINUSDT_perp_1d": {
+      "exchange": "Binance",
+      "symbol": "FARTCOINUSDT",
+      "market": "perp",
+      "interval": "1d",
+      "price": 0.906,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:27:29.675438+00:00"
+    },
+    "Binance_DEGOUSDT_perp_1d": {
+      "exchange": "Binance",
+      "symbol": "DEGOUSDT",
+      "market": "perp",
+      "interval": "1d",
+      "price": 1.0171,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:27:31.128156+00:00"
+    },
+    "Binance_NEIROUSDT_perp_1d": {
+      "exchange": "Binance",
+      "symbol": "NEIROUSDT",
+      "market": "perp",
+      "interval": "1d",
+      "price": 0.0003314,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:27:32.463812+00:00"
+    },
+    "Binance_APTUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "APTUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 5.3436,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:27:33.965826+00:00"
+    },
+    "Binance_SEIUSDT_perp_1d": {
+      "exchange": "Binance",
+      "symbol": "SEIUSDT",
+      "market": "perp",
+      "interval": "1d",
+      "price": 0.2129,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:27:34.951553+00:00"
+    },
+    "Binance_UNIUSDT_perp_1w": {
+      "exchange": "Binance",
+      "symbol": "UNIUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 7.176,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:27:36.286304+00:00"
+    },
+    "Binance_ACHUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "ACHUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.027106,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:27:37.780861+00:00"
+    },
+    "Binance_1000LUNCUSDT_perp_1w": {
+      "exchange": "Binance",
+      "symbol": "1000LUNCUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 0.06022,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:27:38.771420+00:00"
+    },
+    "Binance_ZRXUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "ZRXUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.2777,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:27:42.681074+00:00"
+    },
+    "Binance_ONEUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "ONEUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.01343,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:27:44.020209+00:00"
+    },
+    "Binance_GMTUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "GMTUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.05767,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:27:45.515468+00:00"
+    },
+    "Binance_RENDERUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "RENDERUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 4.455,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:27:46.495447+00:00"
+    },
+    "Binance_AKTUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "AKTUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 1.462,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:27:47.832454+00:00"
+    },
+    "Binance_KAIAUSDT_perp_1d": {
+      "exchange": "Binance",
+      "symbol": "KAIAUSDT",
+      "market": "perp",
+      "interval": "1d",
+      "price": 0.1831,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:27:49.330057+00:00"
+    },
+    "Binance_HOMEUSDT_perp_1w": {
+      "exchange": "Binance",
+      "symbol": "HOMEUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 0.026264,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:27:50.312014+00:00"
+    },
+    "Binance_RVNUSDT_perp_1w": {
+      "exchange": "Binance",
+      "symbol": "RVNUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 0.01899,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:03.677605+00:00"
+    },
+    "Binance_YGGUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "YGGUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.2091,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:05.173556+00:00"
+    },
+    "Binance_BRUSDT_perp_1w": {
+      "exchange": "Binance",
+      "symbol": "BRUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 0.0431,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:28:06.168696+00:00"
+    },
+    "Binance_MAVIAUSDT_perp_1w": {
+      "exchange": "Binance",
+      "symbol": "MAVIAUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 0.1676,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:07.518704+00:00"
+    },
+    "Binance_JSTUSDT_perp_1w": {
+      "exchange": "Binance",
+      "symbol": "JSTUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 0.032665,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:28:09.014377+00:00"
+    },
+    "Binance_SIGNUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "SIGNUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.09541,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:09.989435+00:00"
+    },
+    "Binance_SFPUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "SFPUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.5275,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:23.605624+00:00"
+    },
+    "Binance_ARKUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "ARKUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.4368,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:24.941908+00:00"
+    },
+    "Binance_ARCUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "ARCUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.05911,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:26.459055+00:00"
+    },
+    "Binance_FLOWUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "FLOWUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.402,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:27.435634+00:00"
+    },
+    "Binance_B3USDT_perp_1d": {
+      "exchange": "Binance",
+      "symbol": "B3USDT",
+      "market": "perp",
+      "interval": "1d",
+      "price": 0.002563,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:28:28.785075+00:00"
+    },
+    "Binance_ETHUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "ETHUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 1792.71,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:28:30.282480+00:00"
+    },
+    "Binance_SPELLUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "SPELLUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.0005887,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:31.257146+00:00"
+    },
+    "Binance_ETHUSDT_perp_1w": {
+      "exchange": "Binance",
+      "symbol": "ETHUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 2546.32,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:32.594936+00:00"
+    },
+    "Binance_VVVUSDT_perp_1w": {
+      "exchange": "Binance",
+      "symbol": "VVVUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 3.037,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:34.092000+00:00"
+    },
+    "Binance_LAYERUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "LAYERUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 3.0374,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:35.078575+00:00"
+    },
+    "Binance_NMRUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "NMRUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 9.174,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:36.416756+00:00"
+    },
+    "Binance_FISUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "FISUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.2495,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:37.914579+00:00"
+    },
+    "Binance_FORMUSDT_perp_1d": {
+      "exchange": "Binance",
+      "symbol": "FORMUSDT",
+      "market": "perp",
+      "interval": "1d",
+      "price": 2.3441,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:28:38.893330+00:00"
+    },
+    "Binance_HIFIUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "HIFIUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.2682,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:40.229231+00:00"
+    },
+    "Binance_STEEMUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "STEEMUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.15081,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:41.722462+00:00"
+    },
+    "Binance_HEIUSDT_perp_1d": {
+      "exchange": "Binance",
+      "symbol": "HEIUSDT",
+      "market": "perp",
+      "interval": "1d",
+      "price": 0.3055,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:42.692589+00:00"
+    },
+    "Binance_IOTAUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "IOTAUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.2064,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:44.025947+00:00"
+    },
+    "Binance_HIFIUSDT_perp_1w": {
+      "exchange": "Binance",
+      "symbol": "HIFIUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 0.0718,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:28:45.524703+00:00"
+    },
+    "Binance_TRUMPUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "TRUMPUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 13.158,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:46.522761+00:00"
+    },
+    "Binance_RPLUSDT_perp_1w": {
+      "exchange": "Binance",
+      "symbol": "RPLUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 6.33,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:47.857551+00:00"
+    },
+    "Binance_GASUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "GASUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 3.291,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:49.346899+00:00"
+    },
+    "Binance_MORPHOUSDT_perp_1d": {
+      "exchange": "Binance",
+      "symbol": "MORPHOUSDT",
+      "market": "perp",
+      "interval": "1d",
+      "price": 1.1502,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:28:50.332559+00:00"
+    },
+    "Binance_DENTUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "DENTUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.000819,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:51.684233+00:00"
+    },
+    "Binance_ONTUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "ONTUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.1536,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:53.181533+00:00"
+    },
+    "Binance_COSUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "COSUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.003652,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:54.171257+00:00"
+    },
+    "Binance_TRUUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "TRUUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.04021,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:55.509068+00:00"
+    },
+    "Binance_SXPUSDT_perp_1M": {
       "exchange": "Binance",
       "symbol": "SXPUSDT",
       "market": "perp",
+      "interval": "1M",
+      "price": 0.2036,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:57.003228+00:00"
+    },
+    "Binance_PAXGUSDT_perp_1w": {
+      "exchange": "Binance",
+      "symbol": "PAXGUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 3474.42,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:57.989309+00:00"
+    },
+    "Binance_RLCUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "RLCUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 1.2189,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:28:59.320825+00:00"
+    },
+    "Binance_BSVUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "BSVUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 37.95,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:00.821683+00:00"
+    },
+    "Binance_ASRUSDT_perp_1w": {
+      "exchange": "Binance",
+      "symbol": "ASRUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 1.915,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:29:01.809729+00:00"
+    },
+    "Binance_BICOUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "BICOUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.1335,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:03.146050+00:00"
+    },
+    "Binance_BNBUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "BNBUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 599.21,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:29:04.636487+00:00"
+    },
+    "Binance_BANANAUSDT_perp_1d": {
+      "exchange": "Binance",
+      "symbol": "BANANAUSDT",
+      "market": "perp",
       "interval": "1d",
-      "price": 0.1704,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:23.963386+00:00"
+      "price": 14.537,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:29:05.627406+00:00"
     },
-    "Binance_BONKUSDT_spot_1M": {
+    "Binance_WAXPUSDT_perp_1M": {
       "exchange": "Binance",
-      "symbol": "BONKUSDT",
-      "market": "spot",
+      "symbol": "WAXPUSDT",
+      "market": "perp",
       "interval": "1M",
-      "price": 1.95e-05,
+      "price": 0.02434,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:24.533767+00:00"
+      "timestamp": "2025-06-23T02:29:06.961331+00:00"
     },
-    "Binance_IDEXUSDT_spot_1M": {
+    "Binance_SCRUSDT_perp_1M": {
       "exchange": "Binance",
-      "symbol": "IDEXUSDT",
-      "market": "spot",
+      "symbol": "SCRUSDT",
+      "market": "perp",
       "interval": "1M",
-      "price": 0.02613,
+      "price": 0.3493,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:25.530078+00:00"
+      "timestamp": "2025-06-23T02:29:08.462621+00:00"
     },
-    "Binance_GNSUSDT_spot_1M": {
+    "Binance_1000000BOBUSDT_perp_1d": {
       "exchange": "Binance",
-      "symbol": "GNSUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 1.508,
+      "symbol": "1000000BOBUSDT",
+      "market": "perp",
+      "interval": "1d",
+      "price": 0.03727,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:26.774681+00:00"
+      "timestamp": "2025-06-23T02:29:09.450213+00:00"
+    },
+    "Binance_BCHUSDT_perp_1w": {
+      "exchange": "Binance",
+      "symbol": "BCHUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 460.17,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:10.784297+00:00"
+    },
+    "Binance_1000000MOGUSDT_perp_1w": {
+      "exchange": "Binance",
+      "symbol": "1000000MOGUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 0.9006,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:12.279243+00:00"
+    },
+    "Binance_SCRTUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "SCRTUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.2133,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:13.276052+00:00"
+    },
+    "Binance_PROMPTUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "PROMPTUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.3934,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:14.624447+00:00"
+    },
+    "Binance_NOTUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "NOTUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.002607,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:16.123613+00:00"
+    },
+    "Binance_ACEUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "ACEUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.6762,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:17.113657+00:00"
+    },
+    "Binance_FIOUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "FIOUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.01858,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:18.452219+00:00"
+    },
+    "Binance_ANKRUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "ANKRUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.01979,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:19.943201+00:00"
+    },
+    "Binance_ZECUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "ZECUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 36.0,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:29:20.932544+00:00"
+    },
+    "Binance_DUSKUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "DUSKUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.0861,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:22.286414+00:00"
+    },
+    "Binance_SHELLUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "SHELLUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.2269,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:23.779265+00:00"
+    },
+    "Binance_STORJUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "STORJUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.3063,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:24.765029+00:00"
+    },
+    "Binance_VIRTUALUSDT_perp_1w": {
+      "exchange": "Binance",
+      "symbol": "VIRTUALUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 1.8413,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:26.107004+00:00"
+    },
+    "Binance_ATAUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "ATAUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.0615,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:27.629751+00:00"
+    },
+    "Binance_ALCHUSDT_perp_1d": {
+      "exchange": "Binance",
+      "symbol": "ALCHUSDT",
+      "market": "perp",
+      "interval": "1d",
+      "price": 0.12202,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:28.625858+00:00"
+    },
+    "Binance_GPSUSDT_perp_1w": {
+      "exchange": "Binance",
+      "symbol": "GPSUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 0.0218,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:29:29.961869+00:00"
+    },
+    "Binance_PARTIUSDT_perp_1w": {
+      "exchange": "Binance",
+      "symbol": "PARTIUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 0.2412,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:31.459040+00:00"
+    },
+    "Binance_PARTIUSDT_perp_1d": {
+      "exchange": "Binance",
+      "symbol": "PARTIUSDT",
+      "market": "perp",
+      "interval": "1d",
+      "price": 0.1933,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:29:32.455621+00:00"
+    },
+    "Binance_WUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "WUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.0873,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:33.793981+00:00"
+    },
+    "Binance_DRIFTUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "DRIFTUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.7019,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:35.284735+00:00"
+    },
+    "Binance_GPSUSDT_perp_1d": {
+      "exchange": "Binance",
+      "symbol": "GPSUSDT",
+      "market": "perp",
+      "interval": "1d",
+      "price": 0.02654,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:29:36.253271+00:00"
+    },
+    "Binance_SYSUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "SYSUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.05126,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:37.585000+00:00"
+    },
+    "Binance_RSRUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "RSRUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.009029,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:39.084878+00:00"
+    },
+    "Binance_AI16ZUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "AI16ZUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.2761,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:40.078433+00:00"
+    },
+    "Binance_TSTUSDT_perp_1w": {
+      "exchange": "Binance",
+      "symbol": "TSTUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 0.0457,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:41.416139+00:00"
+    },
+    "Binance_NEIROETHUSDT_perp_1w": {
+      "exchange": "Binance",
+      "symbol": "NEIROETHUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 0.09345,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:42.906438+00:00"
+    },
+    "Binance_MANAUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "MANAUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.3155,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:43.895512+00:00"
+    },
+    "Binance_BATUSDT_perp_1M": {
+      "exchange": "Binance",
+      "symbol": "BATUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.1523,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:45.241965+00:00"
     },
     "Binance_PIVXUSDT_spot_1M": {
       "exchange": "Binance",
@@ -980,16 +854,34 @@
       "interval": "1M",
       "price": 0.1602,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:28.307802+00:00"
+      "timestamp": "2025-06-23T02:29:47.131664+00:00"
     },
-    "Binance_SLPUSDT_spot_1M": {
+    "Binance_SPXUSDT_perp_1w": {
       "exchange": "Binance",
-      "symbol": "SLPUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 0.001725,
+      "symbol": "SPXUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 1.4896,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:29.304567+00:00"
+      "timestamp": "2025-06-23T02:29:48.117618+00:00"
+    },
+    "Binance_AAVEUSDT_perp_1w": {
+      "exchange": "Binance",
+      "symbol": "AAVEUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 274.82,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:49.448443+00:00"
+    },
+    "Binance_DATAUSDT_spot_1w": {
+      "exchange": "Binance",
+      "symbol": "DATAUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.01281,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:29:54.249569+00:00"
     },
     "Binance_BARUSDT_spot_1M": {
       "exchange": "Binance",
@@ -998,7 +890,16 @@
       "interval": "1M",
       "price": 2.155,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:30.548908+00:00"
+      "timestamp": "2025-06-23T02:29:55.558680+00:00"
+    },
+    "Binance_BONKUSDT_spot_1M": {
+      "exchange": "Binance",
+      "symbol": "BONKUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 1.95e-05,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:57.060107+00:00"
     },
     "Binance_RADUSDT_spot_1M": {
       "exchange": "Binance",
@@ -1007,313 +908,34 @@
       "interval": "1M",
       "price": 0.8,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:31.116164+00:00"
+      "timestamp": "2025-06-23T02:29:58.049537+00:00"
     },
-    "Binance_GLMRUSDT_spot_1w": {
+    "Binance_SLPUSDT_spot_1M": {
       "exchange": "Binance",
-      "symbol": "GLMRUSDT",
+      "symbol": "SLPUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.001725,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:29:59.287662+00:00"
+    },
+    "Binance_IDEXUSDT_spot_1M": {
+      "exchange": "Binance",
+      "symbol": "IDEXUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.02613,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:30:00.803972+00:00"
+    },
+    "Binance_LUNCUSDT_spot_1w": {
+      "exchange": "Binance",
+      "symbol": "LUNCUSDT",
       "market": "spot",
       "interval": "1w",
-      "price": 0.0864,
+      "price": 6.03e-05,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:32.625300+00:00"
-    },
-    "Bybit_JUSDT_perp_1M": {
-      "exchange": "Bybit",
-      "symbol": "JUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.2258,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:33.291063+00:00"
-    },
-    "Bybit_RAYDIUMUSDT_perp_1M": {
-      "exchange": "Bybit",
-      "symbol": "RAYDIUMUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 2.7924,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:34.204998+00:00"
-    },
-    "Binance_REQUSDT_spot_1w": {
-      "exchange": "Binance",
-      "symbol": "REQUSDT",
-      "market": "spot",
-      "interval": "1w",
-      "price": 0.1478,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:35.428538+00:00"
-    },
-    "Bybit_REXUSDT_perp_1M": {
-      "exchange": "Bybit",
-      "symbol": "REXUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.03346,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:36.861757+00:00"
-    },
-    "Bybit_MVLUSDT_perp_1M": {
-      "exchange": "Bybit",
-      "symbol": "MVLUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.003522,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:37.782035+00:00"
-    },
-    "Bybit_CTCUSDT_perp_1w": {
-      "exchange": "Bybit",
-      "symbol": "CTCUSDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 0.659,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:39.085710+00:00"
-    },
-    "Bybit_HNTUSDT_perp_1M": {
-      "exchange": "Bybit",
-      "symbol": "HNTUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 3.86,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:39.725394+00:00"
-    },
-    "Binance_MDTUSDT_spot_1d": {
-      "exchange": "Binance",
-      "symbol": "MDTUSDT",
-      "market": "spot",
-      "interval": "1d",
-      "price": 0.01514,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:41.230626+00:00"
-    },
-    "Bybit_MVLUSDT_perp_1w": {
-      "exchange": "Bybit",
-      "symbol": "MVLUSDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 0.00327,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:41.891716+00:00"
-    },
-    "Bybit_CLOUDUSDT_perp_1M": {
-      "exchange": "Bybit",
-      "symbol": "CLOUDUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.07383,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:30:42.819708+00:00"
-    },
-    "Bybit_RSS3USDT_perp_1M": {
-      "exchange": "Bybit",
-      "symbol": "RSS3USDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.05887,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:44.068961+00:00"
-    },
-    "Bybit_1000000PEIPEIUSDT_perp_1d": {
-      "exchange": "Bybit",
-      "symbol": "1000000PEIPEIUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.02864,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:45.539234+00:00"
-    },
-    "Bybit_SCAUSDT_perp_1M": {
-      "exchange": "Bybit",
-      "symbol": "SCAUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.16081,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:46.448103+00:00"
-    },
-    "Bybit_MOBILEUSDT_perp_1M": {
-      "exchange": "Bybit",
-      "symbol": "MOBILEUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.0004908,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:47.606650+00:00"
-    },
-    "Bybit_ALEOUSDT_perp_1M": {
-      "exchange": "Bybit",
-      "symbol": "ALEOUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.2609,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:48.253529+00:00"
-    },
-    "Bybit_BLASTUSDT_perp_1M": {
-      "exchange": "Bybit",
-      "symbol": "BLASTUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.003546,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:49.685725+00:00"
-    },
-    "Bybit_SCAUSDT_perp_1w": {
-      "exchange": "Bybit",
-      "symbol": "SCAUSDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 0.12441,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:50.335815+00:00"
-    },
-    "Bybit_PEAQUSDT_perp_1M": {
-      "exchange": "Bybit",
-      "symbol": "PEAQUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.1283,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:51.244354+00:00"
-    },
-    "Bybit_OLUSDT_perp_1M": {
-      "exchange": "Bybit",
-      "symbol": "OLUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.06179,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:52.396741+00:00"
-    },
-    "Bybit_ALEOUSDT_perp_1w": {
-      "exchange": "Bybit",
-      "symbol": "ALEOUSDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 0.1807,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:30:53.828892+00:00"
-    },
-    "Bybit_SOLAYERUSDT_perp_1M": {
-      "exchange": "Bybit",
-      "symbol": "SOLAYERUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 3.0407,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:54.739539+00:00"
-    },
-    "Bybit_1000CATSUSDT_perp_1w": {
-      "exchange": "Bybit",
-      "symbol": "1000CATSUSDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 0.008997,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:57.132285+00:00"
-    },
-    "Bybit_CARVUSDT_perp_1M": {
-      "exchange": "Bybit",
-      "symbol": "CARVUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.3794,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:57.795926+00:00"
-    },
-    "Bybit_A8USDT_perp_1M": {
-      "exchange": "Bybit",
-      "symbol": "A8USDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.13111,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:59.226487+00:00"
-    },
-    "Bybit_FBUSDT_perp_1d": {
-      "exchange": "Bybit",
-      "symbol": "FBUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.5139,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:30:59.883879+00:00"
-    },
-    "Bybit_ALEOUSDT_perp_1d": {
-      "exchange": "Bybit",
-      "symbol": "ALEOUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.2111,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:31:00.816597+00:00"
-    },
-    "Bybit_BEAMUSDT_perp_1M": {
-      "exchange": "Bybit",
-      "symbol": "BEAMUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.007212,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:01.985433+00:00"
-    },
-    "Bybit_1000CATSUSDT_perp_1d": {
-      "exchange": "Bybit",
-      "symbol": "1000CATSUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.003006,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:31:03.420213+00:00"
-    },
-    "Bybit_10000WHYUSDT_perp_1d": {
-      "exchange": "Bybit",
-      "symbol": "10000WHYUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.0002726,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:04.332018+00:00"
-    },
-    "Bybit_COREUSDT_perp_1M": {
-      "exchange": "Bybit",
-      "symbol": "COREUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.7874,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:05.497503+00:00"
-    },
-    "Bybit_SOLAYERUSDT_perp_1d": {
-      "exchange": "Bybit",
-      "symbol": "SOLAYERUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.6153,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:31:06.173362+00:00"
-    },
-    "Bybit_ETHBTCUSDT_perp_1M": {
-      "exchange": "Bybit",
-      "symbol": "ETHBTCUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.019055,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:31:07.606214+00:00"
-    },
-    "Bybit_DBRUSDT_perp_1d": {
-      "exchange": "Bybit",
-      "symbol": "DBRUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.0156,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:08.287480+00:00"
+      "timestamp": "2025-06-23T02:30:01.789618+00:00"
     },
     "Bybit_SENDUSDT_perp_1M": {
       "exchange": "Bybit",
@@ -1322,43 +944,88 @@
       "interval": "1M",
       "price": 0.7839,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:09.217031+00:00"
+      "timestamp": "2025-06-23T02:30:03.007192+00:00"
     },
-    "Bybit_10000ELONUSDT_perp_1d": {
+    "Bybit_RSS3USDT_perp_1M": {
       "exchange": "Bybit",
-      "symbol": "10000ELONUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.001079,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:31:10.384273+00:00"
-    },
-    "Bybit_AVAILUSDT_perp_1w": {
-      "exchange": "Bybit",
-      "symbol": "AVAILUSDT",
-      "market": "perp",
-      "interval": "1w",
-      "price": 0.03251,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:11.819042+00:00"
-    },
-    "Bybit_SNTUSDT_perp_1M": {
-      "exchange": "Bybit",
-      "symbol": "SNTUSDT",
+      "symbol": "RSS3USDT",
       "market": "perp",
       "interval": "1M",
-      "price": 0.02253,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:31:12.752097+00:00"
+      "price": 0.05887,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:30:05.005819+00:00"
     },
-    "Bybit_PRAIUSDT_perp_1d": {
+    "Bybit_HNTUSDT_perp_1M": {
       "exchange": "Bybit",
-      "symbol": "PRAIUSDT",
+      "symbol": "HNTUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 3.86,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:30:05.936360+00:00"
+    },
+    "Bybit_BEAMUSDT_perp_1M": {
+      "exchange": "Bybit",
+      "symbol": "BEAMUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.007212,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:30:07.103485+00:00"
+    },
+    "Bybit_RAYDIUMUSDT_perp_1M": {
+      "exchange": "Bybit",
+      "symbol": "RAYDIUMUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 2.7924,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:30:08.533737+00:00"
+    },
+    "Bybit_A8USDT_perp_1M": {
+      "exchange": "Bybit",
+      "symbol": "A8USDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.13111,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:30:09.466398+00:00"
+    },
+    "Bybit_COREUSDT_perp_1M": {
+      "exchange": "Bybit",
+      "symbol": "COREUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.7874,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:30:10.664681+00:00"
+    },
+    "Bybit_FTNUSDT_perp_1d": {
+      "exchange": "Bybit",
+      "symbol": "FTNUSDT",
       "market": "perp",
       "interval": "1d",
-      "price": 0.02084,
+      "price": 4.4594,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:13.909579+00:00"
+      "timestamp": "2025-06-23T02:30:12.092220+00:00"
+    },
+    "Bybit_RSS3USDT_perp_1w": {
+      "exchange": "Bybit",
+      "symbol": "RSS3USDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 0.04517,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:30:13.029181+00:00"
+    },
+    "Bybit_DBRUSDT_perp_1d": {
+      "exchange": "Bybit",
+      "symbol": "DBRUSDT",
+      "market": "perp",
+      "interval": "1d",
+      "price": 0.01516,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:30:14.234983+00:00"
     },
     "Bybit_ROAMUSDT_perp_1M": {
       "exchange": "Bybit",
@@ -1367,52 +1034,43 @@
       "interval": "1M",
       "price": 0.2892,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:14.589828+00:00"
+      "timestamp": "2025-06-23T02:30:15.671205+00:00"
     },
-    "Bybit_SOLOUSDT_perp_1M": {
+    "Bybit_SUNDOGUSDT_perp_1w": {
       "exchange": "Bybit",
-      "symbol": "SOLOUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.2001,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:31:16.020841+00:00"
-    },
-    "Bybit_AGIUSDT_perp_1M": {
-      "exchange": "Bybit",
-      "symbol": "AGIUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.06716,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:16.709567+00:00"
-    },
-    "Bybit_NCUSDT_perp_1w": {
-      "exchange": "Bybit",
-      "symbol": "NCUSDT",
+      "symbol": "SUNDOGUSDT",
       "market": "perp",
       "interval": "1w",
-      "price": 0.0368,
+      "price": 0.05532,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:17.622353+00:00"
+      "timestamp": "2025-06-23T02:30:16.594249+00:00"
     },
-    "Bybit_NSUSDT_perp_1M": {
+    "Bybit_AIOZUSDT_perp_1w": {
       "exchange": "Bybit",
-      "symbol": "NSUSDT",
+      "symbol": "AIOZUSDT",
       "market": "perp",
-      "interval": "1M",
-      "price": 0.2194,
+      "interval": "1w",
+      "price": 0.3372,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:18.792874+00:00"
+      "timestamp": "2025-06-23T02:30:17.757419+00:00"
     },
     "Bybit_ROAMUSDT_perp_1w": {
       "exchange": "Bybit",
       "symbol": "ROAMUSDT",
       "market": "perp",
       "interval": "1w",
-      "price": 0.1873,
+      "price": 0.151,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:30:19.186512+00:00"
+    },
+    "Bybit_MOBILEUSDT_perp_1M": {
+      "exchange": "Bybit",
+      "symbol": "MOBILEUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.0004908,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:20.230296+00:00"
+      "timestamp": "2025-06-23T02:30:20.136870+00:00"
     },
     "Bybit_MASAUSDT_perp_1M": {
       "exchange": "Bybit",
@@ -1421,223 +1079,106 @@
       "interval": "1M",
       "price": 0.02862,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:21.159539+00:00"
+      "timestamp": "2025-06-23T02:30:21.330358+00:00"
     },
-    "Bybit_BALUSDT_perp_1M": {
+    "Bybit_FLOCKUSDT_perp_1d": {
       "exchange": "Bybit",
-      "symbol": "BALUSDT",
+      "symbol": "FLOCKUSDT",
+      "market": "perp",
+      "interval": "1d",
+      "price": 0.1607,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:30:22.948472+00:00"
+    },
+    "Bybit_BLASTUSDT_perp_1M": {
+      "exchange": "Bybit",
+      "symbol": "BLASTUSDT",
       "market": "perp",
       "interval": "1M",
-      "price": 0.934,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:31:22.325990+00:00"
+      "price": 0.003546,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:30:23.847440+00:00"
     },
-    "Bybit_ORBSUSDT_perp_1w": {
+    "Bybit_REXUSDT_perp_1M": {
       "exchange": "Bybit",
-      "symbol": "ORBSUSDT",
+      "symbol": "REXUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.03346,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:30:25.020370+00:00"
+    },
+    "Bybit_DARKUSDT_perp_1d": {
+      "exchange": "Bybit",
+      "symbol": "DARKUSDT",
+      "market": "perp",
+      "interval": "1d",
+      "price": 0.00397,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:30:26.455966+00:00"
+    },
+    "Bybit_GIGAUSDT_perp_1w": {
+      "exchange": "Bybit",
+      "symbol": "GIGAUSDT",
       "market": "perp",
       "interval": "1w",
-      "price": 0.01918,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:31:22.971148+00:00"
-    },
-    "Bybit_NCUSDT_perp_1d": {
-      "exchange": "Bybit",
-      "symbol": "NCUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.02656,
+      "price": 0.02309,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:24.402530+00:00"
+      "timestamp": "2025-06-23T02:30:27.378521+00:00"
     },
-    "Bybit_ROAMUSDT_perp_1d": {
+    "Bybit_MASAUSDT_perp_1w": {
       "exchange": "Bybit",
-      "symbol": "ROAMUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.1491,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:31:25.051385+00:00"
-    },
-    "Bybit_ORDERUSDT_perp_1M": {
-      "exchange": "Bybit",
-      "symbol": "ORDERUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.1043,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:25.987025+00:00"
-    },
-    "Bybit_LOOKSUSDT_perp_1M": {
-      "exchange": "Bybit",
-      "symbol": "LOOKSUSDT",
-      "market": "perp",
-      "interval": "1M",
-      "price": 0.02337,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:27.150240+00:00"
-    },
-    "Bybit_LMWRUSDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "LMWRUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 0.09688,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:28.583241+00:00"
-    },
-    "Bybit_OBTUSDT_perp_1d": {
-      "exchange": "Bybit",
-      "symbol": "OBTUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.00869,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:31.904517+00:00"
-    },
-    "Bybit_GODSUSDT_perp_1d": {
-      "exchange": "Bybit",
-      "symbol": "GODSUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "price": 0.1219,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:33.064888+00:00"
-    },
-    "Bybit_SUNDOGUSDT_perp_1w": {
-      "exchange": "Bybit",
-      "symbol": "SUNDOGUSDT",
+      "symbol": "MASAUSDT",
       "market": "perp",
       "interval": "1w",
-      "price": 0.05128,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:31:33.729362+00:00"
+      "price": 0.02118,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:30:28.573828+00:00"
     },
-    "Bybit_SERAPHUSDT_perp_1d": {
+    "Bybit_OLUSDT_perp_1M": {
       "exchange": "Bybit",
-      "symbol": "SERAPHUSDT",
+      "symbol": "OLUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.06179,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:30:30.000985+00:00"
+    },
+    "Bybit_PEAQUSDT_perp_1M": {
+      "exchange": "Bybit",
+      "symbol": "PEAQUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.1283,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:30:30.934287+00:00"
+    },
+    "Bybit_AVAILUSDT_perp_1d": {
+      "exchange": "Bybit",
+      "symbol": "AVAILUSDT",
       "market": "perp",
       "interval": "1d",
-      "price": 0.19251,
+      "price": 0.02384,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:35.169710+00:00"
+      "timestamp": "2025-06-23T02:30:32.094387+00:00"
     },
-    "Bybit_STETHUSDT_spot_1M": {
+    "Bybit_1000CATSUSDT_perp_1d": {
       "exchange": "Bybit",
-      "symbol": "STETHUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 1791.95,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:31:35.820270+00:00"
-    },
-    "Bybit_NAVXUSDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "NAVXUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 0.05823,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:39.339929+00:00"
-    },
-    "Bybit_PPTUSDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "PPTUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 0.19342,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:31:40.518518+00:00"
-    },
-    "Bybit_TRCUSDT_spot_1d": {
-      "exchange": "Bybit",
-      "symbol": "TRCUSDT",
-      "market": "spot",
+      "symbol": "1000CATSUSDT",
+      "market": "perp",
       "interval": "1d",
-      "price": 0.0002307,
+      "price": 0.003507,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:41.962653+00:00"
+      "timestamp": "2025-06-23T02:30:33.517342+00:00"
     },
-    "Bybit_MBXUSDT_spot_1w": {
+    "Bybit_10000WENUSDT_perp_1w": {
       "exchange": "Bybit",
-      "symbol": "MBXUSDT",
-      "market": "spot",
+      "symbol": "10000WENUSDT",
+      "market": "perp",
       "interval": "1w",
-      "price": 0.1798,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:31:45.389515+00:00"
-    },
-    "Bybit_XEMUSDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "XEMUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 0.01984,
+      "price": 0.3849,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:46.545622+00:00"
-    },
-    "Bybit_CMETHUSDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "CMETHUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 1908.38,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:31:47.319086+00:00"
-    },
-    "Bybit_SMILEUSDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "SMILEUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 0.02559,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:48.776051+00:00"
-    },
-    "Bybit_HVHUSDT_spot_1d": {
-      "exchange": "Bybit",
-      "symbol": "HVHUSDT",
-      "market": "spot",
-      "interval": "1d",
-      "price": 0.001174,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:31:49.417120+00:00"
-    },
-    "Bybit_MAKUSDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "MAKUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 0.00519,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:31:51.148385+00:00"
-    },
-    "Bybit_XEMUSDT_spot_1d": {
-      "exchange": "Bybit",
-      "symbol": "XEMUSDT",
-      "market": "spot",
-      "interval": "1d",
-      "price": 0.00671,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:52.311119+00:00"
-    },
-    "Bybit_STREAMUSDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "STREAMUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 0.01769,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:31:53.747630+00:00"
-    },
-    "Bybit_MIXUSDT_spot_1d": {
-      "exchange": "Bybit",
-      "symbol": "MIXUSDT",
-      "market": "spot",
-      "interval": "1d",
-      "price": 0.001087,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:55.814704+00:00"
+      "timestamp": "2025-06-23T02:30:34.438309+00:00"
     },
     "Bybit_SPECUSDT_perp_1M": {
       "exchange": "Bybit",
@@ -1646,493 +1187,376 @@
       "interval": "1M",
       "price": 2.38,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:56.970571+00:00"
+      "timestamp": "2025-06-23T02:30:35.630731+00:00"
     },
-    "Bybit_AURORAUSDT_spot_1M": {
+    "Bybit_SCAUSDT_perp_1M": {
       "exchange": "Bybit",
-      "symbol": "AURORAUSDT",
-      "market": "spot",
+      "symbol": "SCAUSDT",
+      "market": "perp",
       "interval": "1M",
-      "price": 0.09316,
+      "price": 0.16081,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:57.602556+00:00"
+      "timestamp": "2025-06-23T02:30:37.065815+00:00"
     },
-    "Bybit_XZKUSDT_spot_1w": {
+    "Bybit_CLANKERUSDT_perp_1w": {
       "exchange": "Bybit",
-      "symbol": "XZKUSDT",
-      "market": "spot",
-      "interval": "1w",
-      "price": 0.00522,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:31:59.034691+00:00"
-    },
-    "Bybit_TELUSDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "TELUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 0.005239,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:31:59.678957+00:00"
-    },
-    "Bybit_FLOCKUSDT_perp_1w": {
-      "exchange": "Bybit",
-      "symbol": "FLOCKUSDT",
+      "symbol": "CLANKERUSDT",
       "market": "perp",
       "interval": "1w",
-      "price": 0.24696,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:06.565414+00:00"
+      "price": 24.37,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:30:37.994552+00:00"
     },
-    "Bybit_XZKUSDT_spot_1d": {
+    "Bybit_10000LADYSUSDT_perp_1w": {
       "exchange": "Bybit",
-      "symbol": "XZKUSDT",
-      "market": "spot",
-      "interval": "1d",
-      "price": 0.006073,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:07.721826+00:00"
-    },
-    "Bybit_AURORAUSDT_spot_1d": {
-      "exchange": "Bybit",
-      "symbol": "AURORAUSDT",
-      "market": "spot",
-      "interval": "1d",
-      "price": 0.0736,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:09.155416+00:00"
-    },
-    "Bybit_XIONUSDT_spot_1w": {
-      "exchange": "Bybit",
-      "symbol": "XIONUSDT",
-      "market": "spot",
+      "symbol": "10000LADYSUSDT",
+      "market": "perp",
       "interval": "1w",
-      "price": 1.2417,
+      "price": 0.0004585,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:10.067831+00:00"
+      "timestamp": "2025-06-23T02:30:39.188440+00:00"
     },
-    "Bybit_CSPRUSDT_spot_1w": {
-      "exchange": "Bybit",
-      "symbol": "CSPRUSDT",
-      "market": "spot",
-      "interval": "1w",
-      "price": 0.01324,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:11.224986+00:00"
-    },
-    "Bybit_APEXUSDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "APEXUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 0.8249,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:11.887501+00:00"
-    },
-    "Bybit_ELIXUSDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "ELIXUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 0.006347,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:13.313595+00:00"
-    },
-    "Bybit_ORDERUSDT_perp_1d": {
+    "Bybit_ORDERUSDT_perp_1M": {
       "exchange": "Bybit",
       "symbol": "ORDERUSDT",
       "market": "perp",
+      "interval": "1M",
+      "price": 0.1043,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:30:40.614481+00:00"
+    },
+    "Bybit_NSUSDT_perp_1M": {
+      "exchange": "Bybit",
+      "symbol": "NSUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.2194,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:30:41.525366+00:00"
+    },
+    "Bybit_REXUSDT_perp_1d": {
+      "exchange": "Bybit",
+      "symbol": "REXUSDT",
+      "market": "perp",
       "interval": "1d",
-      "price": 0.0731,
+      "price": 0.0064,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:13.951948+00:00"
+      "timestamp": "2025-06-23T02:30:42.719510+00:00"
     },
-    "Bybit_SQRUSDT_spot_1w": {
+    "Bybit_JUSDT_perp_1M": {
       "exchange": "Bybit",
-      "symbol": "SQRUSDT",
-      "market": "spot",
-      "interval": "1w",
-      "price": 0.008384,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:14.880576+00:00"
-    },
-    "Bybit_BABY1USDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "BABY1USDT",
-      "market": "spot",
+      "symbol": "JUSDT",
+      "market": "perp",
       "interval": "1M",
-      "price": 0.10541,
+      "price": 0.2258,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:16.053600+00:00"
+      "timestamp": "2025-06-23T02:30:44.155493+00:00"
     },
-    "Bybit_AARKUSDT_spot_1M": {
+    "Bybit_BOBAUSDT_perp_1w": {
       "exchange": "Bybit",
-      "symbol": "AARKUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 0.001653,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:32:17.484443+00:00"
-    },
-    "Bybit_USDDUSDT_spot_1w": {
-      "exchange": "Bybit",
-      "symbol": "USDDUSDT",
-      "market": "spot",
+      "symbol": "BOBAUSDT",
+      "market": "perp",
       "interval": "1w",
-      "price": 1.0005,
+      "price": 0.09082,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:18.392061+00:00"
+      "timestamp": "2025-06-23T02:30:45.070515+00:00"
     },
-    "Bybit_VINUUSDT_spot_1w": {
+    "Bybit_CLANKERUSDT_perp_1d": {
       "exchange": "Bybit",
-      "symbol": "VINUUSDT",
-      "market": "spot",
-      "interval": "1w",
-      "price": 2.1761e-08,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:19.548345+00:00"
-    },
-    "Bybit_PAWSUSDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "PAWSUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 0.0001261,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:20.180143+00:00"
-    },
-    "Bybit_HLGUSDT_spot_1w": {
-      "exchange": "Bybit",
-      "symbol": "HLGUSDT",
-      "market": "spot",
-      "interval": "1w",
-      "price": 0.0004089,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:21.607235+00:00"
-    },
-    "Bybit_ORTUSDT_spot_1d": {
-      "exchange": "Bybit",
-      "symbol": "ORTUSDT",
-      "market": "spot",
+      "symbol": "CLANKERUSDT",
+      "market": "perp",
       "interval": "1d",
-      "price": 0.003537,
+      "price": 30.92,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:22.243448+00:00"
+      "timestamp": "2025-06-23T02:30:46.262310+00:00"
     },
-    "Bybit_USDQUSDT_spot_1w": {
+    "Bybit_ETHBTCUSDT_perp_1M": {
       "exchange": "Bybit",
-      "symbol": "USDQUSDT",
-      "market": "spot",
-      "interval": "1w",
-      "price": 0.9979,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:32:23.161306+00:00"
-    },
-    "Bybit_METHUSDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "METHUSDT",
-      "market": "spot",
+      "symbol": "ETHBTCUSDT",
+      "market": "perp",
       "interval": "1M",
-      "price": 1907.73,
+      "price": 0.019055,
       "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:32:24.324239+00:00"
+      "timestamp": "2025-06-23T02:30:47.694577+00:00"
     },
-    "Bybit_NLKUSDT_spot_1M": {
+    "Bybit_LOOKSUSDT_perp_1M": {
       "exchange": "Bybit",
-      "symbol": "NLKUSDT",
-      "market": "spot",
+      "symbol": "LOOKSUSDT",
+      "market": "perp",
       "interval": "1M",
-      "price": 0.003021,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:32:25.755734+00:00"
-    },
-    "Bybit_GALFTUSDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "GALFTUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 2.936,
+      "price": 0.02337,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:26.674231+00:00"
+      "timestamp": "2025-06-23T02:30:48.634466+00:00"
     },
-    "Bybit_PIRATEUSDT_spot_1w": {
+    "Bybit_PEAQUSDT_perp_1d": {
       "exchange": "Bybit",
-      "symbol": "PIRATEUSDT",
-      "market": "spot",
-      "interval": "1w",
-      "price": 0.06706,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:27.833019+00:00"
-    },
-    "Bybit_SALDUSDT_spot_1d": {
-      "exchange": "Bybit",
-      "symbol": "SALDUSDT",
-      "market": "spot",
+      "symbol": "PEAQUSDT",
+      "market": "perp",
       "interval": "1d",
-      "price": 0.0001988,
+      "price": 0.0736,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:28.480644+00:00"
+      "timestamp": "2025-06-23T02:30:49.794164+00:00"
     },
-    "Bybit_USDQUSDT_spot_1d": {
+    "Bybit_JUSDT_perp_1w": {
       "exchange": "Bybit",
-      "symbol": "USDQUSDT",
-      "market": "spot",
-      "interval": "1d",
-      "price": 0.9995,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:32:29.905879+00:00"
-    },
-    "Bybit_GALFTUSDT_spot_1w": {
-      "exchange": "Bybit",
-      "symbol": "GALFTUSDT",
-      "market": "spot",
+      "symbol": "JUSDT",
+      "market": "perp",
       "interval": "1w",
-      "price": 1.237,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:32:30.558044+00:00"
+      "price": 0.1534,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:30:54.118205+00:00"
     },
-    "Bybit_ERTHAUSDT_spot_1M": {
+    "Bybit_ETHBTCUSDT_perp_1w": {
       "exchange": "Bybit",
-      "symbol": "ERTHAUSDT",
-      "market": "spot",
+      "symbol": "ETHBTCUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 0.024142,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:30:55.276072+00:00"
+    },
+    "Bybit_ALEOUSDT_perp_1M": {
+      "exchange": "Bybit",
+      "symbol": "ALEOUSDT",
+      "market": "perp",
       "interval": "1M",
-      "price": 0.0004937,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:32:31.488200+00:00"
+      "price": 0.2609,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:30:56.697279+00:00"
     },
-    "Bybit_MVUSDT_spot_1d": {
+    "Bybit_ORBSUSDT_perp_1d": {
       "exchange": "Bybit",
-      "symbol": "MVUSDT",
-      "market": "spot",
+      "symbol": "ORBSUSDT",
+      "market": "perp",
       "interval": "1d",
-      "price": 0.006302,
+      "price": 0.02159,
       "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:32:32.682538+00:00"
+      "timestamp": "2025-06-23T02:30:57.614715+00:00"
     },
-    "Bybit_APRSUSDT_spot_1d": {
+    "Bybit_SOLOUSDT_perp_1M": {
       "exchange": "Bybit",
-      "symbol": "APRSUSDT",
-      "market": "spot",
+      "symbol": "SOLOUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.2001,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:30:58.776557+00:00"
+    },
+    "Bybit_1000000CHEEMSUSDT_perp_1w": {
+      "exchange": "Bybit",
+      "symbol": "1000000CHEEMSUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 1.5695,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:31:00.218068+00:00"
+    },
+    "Bybit_JUSDT_perp_1d": {
+      "exchange": "Bybit",
+      "symbol": "JUSDT",
+      "market": "perp",
       "interval": "1d",
-      "price": 0.005483,
+      "price": 0.1351,
       "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:32:34.114824+00:00"
+      "timestamp": "2025-06-23T02:31:01.154951+00:00"
     },
-    "Bybit_DOMEUSDT_spot_1w": {
+    "Bybit_SERAPHUSDT_perp_1d": {
       "exchange": "Bybit",
-      "symbol": "DOMEUSDT",
-      "market": "spot",
-      "interval": "1w",
-      "price": 0.0001446,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:32:35.023516+00:00"
-    },
-    "Bybit_EVERUSDT_spot_1w": {
-      "exchange": "Bybit",
-      "symbol": "EVERUSDT",
-      "market": "spot",
-      "interval": "1w",
-      "price": 0.017698,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:36.181493+00:00"
-    },
-    "Bybit_ERTHAUSDT_spot_1w": {
-      "exchange": "Bybit",
-      "symbol": "ERTHAUSDT",
-      "market": "spot",
-      "interval": "1w",
-      "price": 0.0005526,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:32:36.819735+00:00"
-    },
-    "Bybit_JEFFUSDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "JEFFUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 0.005406,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:38.249892+00:00"
-    },
-    "Bybit_KILOUSDT_spot_1d": {
-      "exchange": "Bybit",
-      "symbol": "KILOUSDT",
-      "market": "spot",
+      "symbol": "SERAPHUSDT",
+      "market": "perp",
       "interval": "1d",
-      "price": 0.01944,
+      "price": 0.18993,
       "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:32:38.894273+00:00"
+      "timestamp": "2025-06-23T02:31:02.314711+00:00"
     },
-    "Bybit_AFCUSDT_spot_1M": {
+    "Bybit_GORKUSDT_perp_1d": {
       "exchange": "Bybit",
-      "symbol": "AFCUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 0.6078,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:39.824349+00:00"
-    },
-    "Bybit_VPRUSDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "VPRUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 0.0005267,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:32:41.024990+00:00"
-    },
-    "Bybit_APPUSDT_spot_1w": {
-      "exchange": "Bybit",
-      "symbol": "APPUSDT",
-      "market": "spot",
-      "interval": "1w",
-      "price": 0.008924,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:42.456118+00:00"
-    },
-    "Bybit_AFGUSDT_spot_1w": {
-      "exchange": "Bybit",
-      "symbol": "AFGUSDT",
-      "market": "spot",
-      "interval": "1w",
-      "price": 0.00326,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:43.372022+00:00"
-    },
-    "Bybit_IZIUSDT_spot_1w": {
-      "exchange": "Bybit",
-      "symbol": "IZIUSDT",
-      "market": "spot",
-      "interval": "1w",
-      "price": 0.004795,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:44.531798+00:00"
-    },
-    "Bybit_NAKAUSDT_spot_1d": {
-      "exchange": "Bybit",
-      "symbol": "NAKAUSDT",
-      "market": "spot",
+      "symbol": "GORKUSDT",
+      "market": "perp",
       "interval": "1d",
-      "price": 0.3285,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:45.168582+00:00"
+      "price": 0.00538,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:31:03.755351+00:00"
     },
-    "Bybit_APPUSDT_spot_1d": {
+    "Bybit_1000NEIROCTOUSDT_perp_1d": {
       "exchange": "Bybit",
-      "symbol": "APPUSDT",
-      "market": "spot",
+      "symbol": "1000NEIROCTOUSDT",
+      "market": "perp",
       "interval": "1d",
-      "price": 0.0082,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:46.596638+00:00"
+      "price": 0.3315,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:31:04.689682+00:00"
     },
-    "Bybit_ZKLUSDT_spot_1M": {
+    "Bybit_CLOUDUSDT_perp_1M": {
       "exchange": "Bybit",
-      "symbol": "ZKLUSDT",
-      "market": "spot",
+      "symbol": "CLOUDUSDT",
+      "market": "perp",
       "interval": "1M",
-      "price": 0.06024,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:47.228794+00:00"
+      "price": 0.07383,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:31:05.999238+00:00"
     },
-    "Bybit_G7USDT_spot_1M": {
+    "Bybit_CARVUSDT_perp_1M": {
       "exchange": "Bybit",
-      "symbol": "G7USDT",
-      "market": "spot",
+      "symbol": "CARVUSDT",
+      "market": "perp",
       "interval": "1M",
-      "price": 0.005231,
+      "price": 0.3794,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:48.149748+00:00"
+      "timestamp": "2025-06-23T02:31:07.445914+00:00"
     },
-    "Bybit_MPLXUSDT_spot_1M": {
+    "Bybit_SDUSDT_perp_1w": {
       "exchange": "Bybit",
-      "symbol": "MPLXUSDT",
-      "market": "spot",
+      "symbol": "SDUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 0.4579,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:31:08.370747+00:00"
+    },
+    "Bybit_MVLUSDT_perp_1M": {
+      "exchange": "Bybit",
+      "symbol": "MVLUSDT",
+      "market": "perp",
       "interval": "1M",
-      "price": 0.19864,
+      "price": 0.003522,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:49.306891+00:00"
+      "timestamp": "2025-06-23T02:31:09.533957+00:00"
     },
-    "Bybit_AGLAUSDT_spot_1d": {
+    "Bybit_SNTUSDT_perp_1M": {
       "exchange": "Bybit",
-      "symbol": "AGLAUSDT",
-      "market": "spot",
+      "symbol": "SNTUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.02253,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:31:10.968130+00:00"
+    },
+    "Bybit_BALUSDT_perp_1w": {
+      "exchange": "Bybit",
+      "symbol": "BALUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 1.071,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:31:11.879560+00:00"
+    },
+    "Bybit_ALEOUSDT_perp_1d": {
+      "exchange": "Bybit",
+      "symbol": "ALEOUSDT",
+      "market": "perp",
       "interval": "1d",
-      "price": 0.0010854,
+      "price": 0.2129,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:50.763928+00:00"
+      "timestamp": "2025-06-23T02:31:13.041178+00:00"
     },
-    "Bybit_BBQUSDT_spot_1w": {
+    "Bybit_MICHIUSDT_perp_1w": {
       "exchange": "Bybit",
-      "symbol": "BBQUSDT",
-      "market": "spot",
+      "symbol": "MICHIUSDT",
+      "market": "perp",
       "interval": "1w",
-      "price": 0.0147,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:32:51.684866+00:00"
-    },
-    "Bybit_FMBUSDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "FMBUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 0.003967,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:32:52.844111+00:00"
-    },
-    "Bybit_STOPUSDT_spot_1w": {
-      "exchange": "Bybit",
-      "symbol": "STOPUSDT",
-      "market": "spot",
-      "interval": "1w",
-      "price": 0.05289,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:32:53.526814+00:00"
-    },
-    "Bybit_ESEUSDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "ESEUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 0.010258,
+      "price": 0.03719,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:54.952524+00:00"
+      "timestamp": "2025-06-23T02:31:17.773506+00:00"
     },
-    "Bybit_VRTXUSDT_spot_1w": {
+    "Bybit_SDUSDT_perp_1d": {
       "exchange": "Bybit",
-      "symbol": "VRTXUSDT",
-      "market": "spot",
-      "interval": "1w",
-      "price": 0.04084,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:55.588282+00:00"
-    },
-    "Bybit_STOPUSDT_spot_1d": {
-      "exchange": "Bybit",
-      "symbol": "STOPUSDT",
-      "market": "spot",
+      "symbol": "SDUSDT",
+      "market": "perp",
       "interval": "1d",
-      "price": 0.06808,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:32:56.502664+00:00"
-    },
-    "Bybit_VELOUSDT_spot_1d": {
-      "exchange": "Bybit",
-      "symbol": "VELOUSDT",
-      "market": "spot",
-      "interval": "1d",
-      "price": 0.011316,
+      "price": 0.4119,
       "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:32:57.659300+00:00"
+      "timestamp": "2025-06-23T02:31:18.937480+00:00"
     },
-    "Bybit_FMBUSDT_spot_1w": {
+    "Bybit_CLOUDUSDT_perp_1w": {
       "exchange": "Bybit",
-      "symbol": "FMBUSDT",
-      "market": "spot",
+      "symbol": "CLOUDUSDT",
+      "market": "perp",
       "interval": "1w",
-      "price": 0.007952,
+      "price": 0.1357,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:31:19.873271+00:00"
+    },
+    "Bybit_HPOS10IUSDT_perp_1w": {
+      "exchange": "Bybit",
+      "symbol": "HPOS10IUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 0.07716,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:31:21.073520+00:00"
+    },
+    "Bybit_10000QUBICUSDT_perp_1w": {
+      "exchange": "Bybit",
+      "symbol": "10000QUBICUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 0.015985,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:31:21.982989+00:00"
+    },
+    "Bybit_SNTUSDT_perp_1w": {
+      "exchange": "Bybit",
+      "symbol": "SNTUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 0.03395,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:31:23.144610+00:00"
+    },
+    "Bybit_AGIUSDT_perp_1M": {
+      "exchange": "Bybit",
+      "symbol": "AGIUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 0.06716,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:31:24.062825+00:00"
+    },
+    "Bybit_SOLAYERUSDT_perp_1M": {
+      "exchange": "Bybit",
+      "symbol": "SOLAYERUSDT",
+      "market": "perp",
+      "interval": "1M",
+      "price": 3.0407,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:31:25.237680+00:00"
+    },
+    "Bybit_10000ELONUSDT_perp_1d": {
+      "exchange": "Bybit",
+      "symbol": "10000ELONUSDT",
+      "market": "perp",
+      "interval": "1d",
+      "price": 0.001116,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:31:26.164401+00:00"
+    },
+    "Bybit_SAROSUSDT_perp_1w": {
+      "exchange": "Bybit",
+      "symbol": "SAROSUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 0.2074,
       "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:32:59.092201+00:00"
+      "timestamp": "2025-06-23T02:31:27.326855+00:00"
+    },
+    "Bybit_MYRIAUSDT_perp_1w": {
+      "exchange": "Bybit",
+      "symbol": "MYRIAUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 0.0013873,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:31:28.237247+00:00"
+    },
+    "Bybit_ELXUSDT_perp_1w": {
+      "exchange": "Bybit",
+      "symbol": "ELXUSDT",
+      "market": "perp",
+      "interval": "1w",
+      "price": 0.0799,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:31:29.402505+00:00"
     },
     "Bybit_DUELUSDT_spot_1M": {
       "exchange": "Bybit",
@@ -2141,7 +1565,16 @@
       "interval": "1M",
       "price": 0.0010204,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:00.012783+00:00"
+      "timestamp": "2025-06-23T02:31:30.335380+00:00"
+    },
+    "Bybit_LADYSUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "LADYSUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 4.581e-08,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:31:31.526301+00:00"
     },
     "Bybit_FOXYUSDT_spot_1M": {
       "exchange": "Bybit",
@@ -2150,79 +1583,52 @@
       "interval": "1M",
       "price": 0.0026,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:01.175429+00:00"
+      "timestamp": "2025-06-23T02:31:32.446799+00:00"
     },
-    "Bybit_ULTIUSDT_spot_1d": {
+    "Bybit_SAROSUSDT_perp_1d": {
       "exchange": "Bybit",
-      "symbol": "ULTIUSDT",
-      "market": "spot",
+      "symbol": "SAROSUSDT",
+      "market": "perp",
       "interval": "1d",
-      "price": 0.001752,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:02.418258+00:00"
+      "price": 0.20704,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:31:33.623769+00:00"
     },
-    "Bybit_ESEUSDT_spot_1d": {
+    "Bybit_COOKUSDT_perp_1d": {
       "exchange": "Bybit",
-      "symbol": "ESEUSDT",
-      "market": "spot",
+      "symbol": "COOKUSDT",
+      "market": "perp",
       "interval": "1d",
-      "price": 0.007164,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:03.844842+00:00"
+      "price": 0.007204,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:31:34.534930+00:00"
     },
-    "Bybit_XETAUSDT_spot_1d": {
+    "Bybit_SQRUSDT_spot_1w": {
       "exchange": "Bybit",
-      "symbol": "XETAUSDT",
-      "market": "spot",
-      "interval": "1d",
-      "price": 0.0004093,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:04.645453+00:00"
-    },
-    "Bybit_FMBUSDT_spot_1d": {
-      "exchange": "Bybit",
-      "symbol": "FMBUSDT",
-      "market": "spot",
-      "interval": "1d",
-      "price": 0.010384,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:05.569642+00:00"
-    },
-    "Bybit_PURSEUSDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "PURSEUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 7.334e-05,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:06.731466+00:00"
-    },
-    "Bybit_B3TRUSDT_spot_1d": {
-      "exchange": "Bybit",
-      "symbol": "B3TRUSDT",
-      "market": "spot",
-      "interval": "1d",
-      "price": 0.06908,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:08.161137+00:00"
-    },
-    "Bybit_THNUSDT_spot_1w": {
-      "exchange": "Bybit",
-      "symbol": "THNUSDT",
+      "symbol": "SQRUSDT",
       "market": "spot",
       "interval": "1w",
-      "price": 0.001138,
+      "price": 0.007401,
       "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:33:09.095818+00:00"
+      "timestamp": "2025-06-23T02:31:35.703317+00:00"
     },
-    "Bybit_XARUSDT_spot_1M": {
+    "Bybit_XAUTUSDT_spot_1w": {
       "exchange": "Bybit",
-      "symbol": "XARUSDT",
+      "symbol": "XAUTUSDT",
       "market": "spot",
-      "interval": "1M",
-      "price": 0.007314,
+      "interval": "1w",
+      "price": 3452.7,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:10.254679+00:00"
+      "timestamp": "2025-06-23T02:31:36.627541+00:00"
+    },
+    "Bybit_SFUNDUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "SFUNDUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.9026,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:31:37.787313+00:00"
     },
     "Bybit_TAPUSDT_spot_1M": {
       "exchange": "Bybit",
@@ -2231,286 +1637,61 @@
       "interval": "1M",
       "price": 0.0004122,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:10.930446+00:00"
+      "timestamp": "2025-06-23T02:31:38.709436+00:00"
     },
-    "Bybit_SQTUSDT_spot_1w": {
+    "Bybit_KILOUSDT_spot_1w": {
       "exchange": "Bybit",
-      "symbol": "SQTUSDT",
+      "symbol": "KILOUSDT",
       "market": "spot",
       "interval": "1w",
-      "price": 0.001582,
+      "price": 0.02592,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:12.364487+00:00"
+      "timestamp": "2025-06-23T02:31:39.899866+00:00"
     },
-    "Bybit_PAALUSDT_spot_1M": {
+    "Bybit_TELUSDT_spot_1M": {
       "exchange": "Bybit",
-      "symbol": "PAALUSDT",
+      "symbol": "TELUSDT",
       "market": "spot",
       "interval": "1M",
-      "price": 0.14756,
+      "price": 0.005239,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:13.025928+00:00"
+      "timestamp": "2025-06-23T02:31:40.822281+00:00"
     },
-    "Bybit_FOXYUSDT_spot_1d": {
+    "Bybit_SQRUSDT_spot_1d": {
       "exchange": "Bybit",
-      "symbol": "FOXYUSDT",
+      "symbol": "SQRUSDT",
       "market": "spot",
       "interval": "1d",
-      "price": 0.001504,
+      "price": 0.007616,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:13.952722+00:00"
+      "timestamp": "2025-06-23T02:31:41.997157+00:00"
     },
-    "Bybit_THNUSDT_spot_1d": {
+    "Bybit_PSTAKEUSDT_spot_1d": {
       "exchange": "Bybit",
-      "symbol": "THNUSDT",
+      "symbol": "PSTAKEUSDT",
       "market": "spot",
       "interval": "1d",
-      "price": 0.001274,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:15.116078+00:00"
+      "price": 0.03306,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:31:42.911261+00:00"
     },
-    "Bybit_GAMEUSDT_spot_1w": {
+    "Bybit_ARTYUSDT_spot_1w": {
       "exchange": "Bybit",
-      "symbol": "GAMEUSDT",
+      "symbol": "ARTYUSDT",
       "market": "spot",
       "interval": "1w",
-      "price": 0.03026,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:33:16.547126+00:00"
+      "price": 0.1735,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:31:44.072242+00:00"
     },
-    "Bybit_TAPUSDT_spot_1d": {
+    "Bybit_XAVAUSDT_spot_1d": {
       "exchange": "Bybit",
-      "symbol": "TAPUSDT",
+      "symbol": "XAVAUSDT",
       "market": "spot",
       "interval": "1d",
-      "price": 0.0003408,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:33:17.465886+00:00"
-    },
-    "Bybit_BRAWLUSDT_spot_1w": {
-      "exchange": "Bybit",
-      "symbol": "BRAWLUSDT",
-      "market": "spot",
-      "interval": "1w",
-      "price": 7e-05,
+      "price": 0.2224,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:18.623599+00:00"
-    },
-    "Bybit_EGP1USDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "EGP1USDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 0.8467,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:33:19.265798+00:00"
-    },
-    "Bybit_LLUSDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "LLUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 0.01223,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:33:20.863486+00:00"
-    },
-    "Bybit_INTERUSDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "INTERUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 0.874,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:21.532534+00:00"
-    },
-    "Bybit_KCALUSDT_spot_1d": {
-      "exchange": "Bybit",
-      "symbol": "KCALUSDT",
-      "market": "spot",
-      "interval": "1d",
-      "price": 0.008733,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:22.456775+00:00"
-    },
-    "Bybit_SOSOUSDT_spot_1w": {
-      "exchange": "Bybit",
-      "symbol": "SOSOUSDT",
-      "market": "spot",
-      "interval": "1w",
-      "price": 0.373,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:33:23.621282+00:00"
-    },
-    "Bybit_BRAWLUSDT_spot_1d": {
-      "exchange": "Bybit",
-      "symbol": "BRAWLUSDT",
-      "market": "spot",
-      "interval": "1d",
-      "price": 6.58e-05,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:25.051740+00:00"
-    },
-    "Bybit_NEONUSDT_spot_1d": {
-      "exchange": "Bybit",
-      "symbol": "NEONUSDT",
-      "market": "spot",
-      "interval": "1d",
-      "price": 0.10778,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:25.984743+00:00"
-    },
-    "Bybit_SISUSDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "SISUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 0.04912,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:33:27.144163+00:00"
-    },
-    "Bybit_MXUSDT_spot_1w": {
-      "exchange": "Bybit",
-      "symbol": "MXUSDT",
-      "market": "spot",
-      "interval": "1w",
-      "price": 2.7063,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:27.781377+00:00"
-    },
-    "Bybit_LLUSDT_spot_1w": {
-      "exchange": "Bybit",
-      "symbol": "LLUSDT",
-      "market": "spot",
-      "interval": "1w",
-      "price": 0.01759,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:29.206153+00:00"
-    },
-    "Bybit_SOSOUSDT_spot_1d": {
-      "exchange": "Bybit",
-      "symbol": "SOSOUSDT",
-      "market": "spot",
-      "interval": "1d",
-      "price": 0.4956,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:33:29.839361+00:00"
-    },
-    "Bybit_BTTUSDT_spot_1w": {
-      "exchange": "Bybit",
-      "symbol": "BTTUSDT",
-      "market": "spot",
-      "interval": "1w",
-      "price": 6.933e-07,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:30.775349+00:00"
-    },
-    "Bybit_MODEUSDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "MODEUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 0.005038,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:31.936157+00:00"
-    },
-    "Bybit_OIKUSDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "OIKUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 0.01855,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:33:33.380816+00:00"
-    },
-    "Bybit_TGTUSDT_spot_1w": {
-      "exchange": "Bybit",
-      "symbol": "TGTUSDT",
-      "market": "spot",
-      "interval": "1w",
-      "price": 0.0674,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:34.296695+00:00"
-    },
-    "Bybit_EGP1USDT_spot_1d": {
-      "exchange": "Bybit",
-      "symbol": "EGP1USDT",
-      "market": "spot",
-      "interval": "1d",
-      "price": 0.8703,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:33:35.449026+00:00"
-    },
-    "Bybit_PELLUSDT_spot_1w": {
-      "exchange": "Bybit",
-      "symbol": "PELLUSDT",
-      "market": "spot",
-      "interval": "1w",
-      "price": 0.003132,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:36.079089+00:00"
-    },
-    "Bybit_CATSUSDT_spot_1w": {
-      "exchange": "Bybit",
-      "symbol": "CATSUSDT",
-      "market": "spot",
-      "interval": "1w",
-      "price": 9.024e-06,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:37.505017+00:00"
-    },
-    "Bybit_OIKUSDT_spot_1w": {
-      "exchange": "Bybit",
-      "symbol": "OIKUSDT",
-      "market": "spot",
-      "interval": "1w",
-      "price": 0.05236,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:33:38.137624+00:00"
-    },
-    "Bybit_TGTUSDT_spot_1d": {
-      "exchange": "Bybit",
-      "symbol": "TGTUSDT",
-      "market": "spot",
-      "interval": "1d",
-      "price": 0.02406,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:39.055880+00:00"
-    },
-    "Bybit_CATSUSDT_spot_1d": {
-      "exchange": "Bybit",
-      "symbol": "CATSUSDT",
-      "market": "spot",
-      "interval": "1d",
-      "price": 3.006e-06,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:33:40.211092+00:00"
-    },
-    "Bybit_SUPRAUSDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "SUPRAUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 0.00683,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:41.647915+00:00"
-    },
-    "Bybit_XDCUSDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "XDCUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 0.07738,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:42.563480+00:00"
-    },
-    "Bybit_CTAUSDT_spot_1M": {
-      "exchange": "Bybit",
-      "symbol": "CTAUSDT",
-      "market": "spot",
-      "interval": "1M",
-      "price": 0.01946,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:33:43.782436+00:00"
+      "timestamp": "2025-06-23T02:31:44.984666+00:00"
     },
     "Bybit_MEEUSDT_spot_1M": {
       "exchange": "Bybit",
@@ -2519,34 +1700,790 @@
       "interval": "1M",
       "price": 0.003701,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:44.415664+00:00"
+      "timestamp": "2025-06-23T02:31:46.180384+00:00"
     },
-    "Bybit_CTAUSDT_spot_1w": {
+    "Bybit_TAPUSDT_spot_1w": {
       "exchange": "Bybit",
-      "symbol": "CTAUSDT",
+      "symbol": "TAPUSDT",
       "market": "spot",
       "interval": "1w",
-      "price": 0.03577,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:33:45.842560+00:00"
-    },
-    "Bybit_DAIUSDT_spot_1d": {
-      "exchange": "Bybit",
-      "symbol": "DAIUSDT",
-      "market": "spot",
-      "interval": "1d",
-      "price": 1.0,
+      "price": 0.0003622,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:46.510226+00:00"
+      "timestamp": "2025-06-23T02:31:47.103788+00:00"
     },
-    "Bybit_ZORAUSDT_spot_1M": {
+    "Bybit_ETH3SUSDT_spot_1w": {
       "exchange": "Bybit",
-      "symbol": "ZORAUSDT",
+      "symbol": "ETH3SUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.002777,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:31:48.264875+00:00"
+    },
+    "Bybit_SMILEUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "SMILEUSDT",
       "market": "spot",
       "interval": "1M",
-      "price": 0.01335,
+      "price": 0.02559,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:47.425021+00:00"
+      "timestamp": "2025-06-23T02:31:49.190008+00:00"
+    },
+    "Bybit_KILOUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "KILOUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.02019,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:31:50.365260+00:00"
+    },
+    "Bybit_ZTXUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "ZTXUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.00244,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:31:51.290055+00:00"
+    },
+    "Bybit_USDTBUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "USDTBUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.9999,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:31:52.457701+00:00"
+    },
+    "Bybit_STREAMUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "STREAMUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.01769,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:31:53.397017+00:00"
+    },
+    "Bybit_VELOUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "VELOUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.0116,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:31:54.589100+00:00"
+    },
+    "Bybit_SMILEUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "SMILEUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.0203,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:31:55.510010+00:00"
+    },
+    "Bybit_FIREUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "FIREUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.02939,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:31:56.669710+00:00"
+    },
+    "Bybit_FARUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "FARUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.000421,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:31:57.581975+00:00"
+    },
+    "Bybit_AOUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "AOUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 16.462,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:31:58.796851+00:00"
+    },
+    "Bybit_PAALUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "PAALUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.14756,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:31:59.718777+00:00"
+    },
+    "Bybit_HVHUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "HVHUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.001194,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:32:00.880719+00:00"
+    },
+    "Bybit_G7USDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "G7USDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.005231,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:01.796401+00:00"
+    },
+    "Bybit_KCSUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "KCSUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 11.188,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:02.957533+00:00"
+    },
+    "Bybit_OIKUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "OIKUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.01855,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:32:03.870285+00:00"
+    },
+    "Bybit_GALFTUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "GALFTUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 2.936,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:05.028820+00:00"
+    },
+    "Bybit_AARKUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "AARKUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.001653,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:32:05.943007+00:00"
+    },
+    "Bybit_MAKUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "MAKUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.00519,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:32:07.138233+00:00"
+    },
+    "Bybit_PFVSUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "PFVSUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.02088,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:32:08.063151+00:00"
+    },
+    "Bybit_STREAMUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "STREAMUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.1256,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:09.223073+00:00"
+    },
+    "Bybit_GALFTUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "GALFTUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 1.33,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:10.144485+00:00"
+    },
+    "Bybit_ZENTUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "ZENTUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.00858,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:11.310742+00:00"
+    },
+    "Bybit_USDQUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "USDQUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.9997,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:12.234712+00:00"
+    },
+    "Bybit_MAKUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "MAKUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.006872,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:13.426309+00:00"
+    },
+    "Bybit_STOPUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "STOPUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.07183,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:14.348365+00:00"
+    },
+    "Bybit_EGP1USDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "EGP1USDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.8467,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:32:15.522234+00:00"
+    },
+    "Bybit_LFTUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "LFTUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.01163,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:16.441536+00:00"
+    },
+    "Bybit_5IREUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "5IREUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.001342,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:17.636711+00:00"
+    },
+    "Bybit_USDQUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "USDQUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.9998,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:18.556350+00:00"
+    },
+    "Bybit_G7USDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "G7USDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.004469,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:19.718291+00:00"
+    },
+    "Bybit_AARKUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "AARKUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.002097,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:20.630641+00:00"
+    },
+    "Bybit_ERTHAUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "ERTHAUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.0004937,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:32:21.817936+00:00"
+    },
+    "Bybit_APTRUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "APTRUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.001325,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:22.742629+00:00"
+    },
+    "Bybit_MODEUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "MODEUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.005038,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:23.921468+00:00"
+    },
+    "Bybit_MNRYUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "MNRYUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.00854,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:24.823732+00:00"
+    },
+    "Bybit_CATSUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "CATSUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 3.507e-06,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:26.016302+00:00"
+    },
+    "Bybit_EGP1USDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "EGP1USDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.984,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:26.938589+00:00"
+    },
+    "Bybit_ERTHAUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "ERTHAUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.0005715,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:28.137885+00:00"
+    },
+    "Bybit_MSTARUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "MSTARUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.004668,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:29.050623+00:00"
+    },
+    "Bybit_WENUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "WENUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 3.854e-05,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:30.210566+00:00"
+    },
+    "Bybit_VENOMUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "VENOMUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.15885,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:32:31.143716+00:00"
+    },
+    "Bybit_MNRYUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "MNRYUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.00877,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:32.320029+00:00"
+    },
+    "Bybit_PIPUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "PIPUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.002035,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:33.239441+00:00"
+    },
+    "Bybit_XEMUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "XEMUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.01984,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:34.435629+00:00"
+    },
+    "Bybit_STETHUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "STETHUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 1791.95,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:32:35.345827+00:00"
+    },
+    "Bybit_ACSUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "ACSUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.0013419,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:36.512717+00:00"
+    },
+    "Bybit_G3USDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "G3USDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.00469,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:37.453605+00:00"
+    },
+    "Bybit_CMETHUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "CMETHUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 1908.38,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:32:38.616834+00:00"
+    },
+    "Bybit_PBUXUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "PBUXUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.002989,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:32:39.554805+00:00"
+    },
+    "Bybit_STETHUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "STETHUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 2546.96,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:40.733019+00:00"
+    },
+    "Bybit_PBUXUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "PBUXUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.004652,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:41.647046+00:00"
+    },
+    "Bybit_GUMMYUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "GUMMYUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.0014,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:32:42.858724+00:00"
+    },
+    "Bybit_G3USDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "G3USDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.004162,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:32:43.783281+00:00"
+    },
+    "Bybit_FMBUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "FMBUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.003967,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:32:44.978974+00:00"
+    },
+    "Bybit_CMETHUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "CMETHUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 2719.37,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:45.891449+00:00"
+    },
+    "Bybit_XARUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "XARUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.007314,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:47.084851+00:00"
+    },
+    "Bybit_ZKLUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "ZKLUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.06024,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:48.023264+00:00"
+    },
+    "Bybit_THNUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "THNUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.001297,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:49.199642+00:00"
+    },
+    "Bybit_NYMUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "NYMUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.03999,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:32:50.106863+00:00"
+    },
+    "Bybit_MOJOUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "MOJOUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.0013,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:32:51.302549+00:00"
+    },
+    "Bybit_EGOUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "EGOUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.004982,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:52.223570+00:00"
+    },
+    "Bybit_COTUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "COTUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.002766,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:53.418572+00:00"
+    },
+    "Bybit_XDCUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "XDCUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.07738,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:54.334750+00:00"
+    },
+    "Bybit_PAWSUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "PAWSUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.0001261,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:55.496000+00:00"
+    },
+    "Bybit_NLKUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "NLKUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.003021,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:32:56.410976+00:00"
+    },
+    "Bybit_THNUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "THNUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.001271,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:32:57.620834+00:00"
+    },
+    "Bybit_AURORAUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "AURORAUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.09316,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:58.541704+00:00"
+    },
+    "Bybit_ZKLUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "ZKLUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.02275,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:32:59.702864+00:00"
+    },
+    "Bybit_NLKUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "NLKUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.003834,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:00.615169+00:00"
+    },
+    "Bybit_FMBUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "FMBUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.009524,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:33:01.816718+00:00"
+    },
+    "Bybit_RATSUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "RATSUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 2.357e-05,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:02.726949+00:00"
+    },
+    "Bybit_TRCUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "TRCUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.0001273,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:33:03.890524+00:00"
+    },
+    "Bybit_JEFFUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "JEFFUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.005406,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:04.797834+00:00"
+    },
+    "Bybit_VELARUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "VELARUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.004944,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:05.968817+00:00"
+    },
+    "Bybit_NLKUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "NLKUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.003532,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:33:06.891364+00:00"
+    },
+    "Bybit_XDCUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "XDCUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.05843,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:08.146035+00:00"
+    },
+    "Bybit_PPTUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "PPTUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.19342,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:33:09.070571+00:00"
+    },
+    "Bybit_METHUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "METHUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 1907.73,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:33:10.244804+00:00"
+    },
+    "Bybit_SUPRAUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "SUPRAUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.00683,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:11.163852+00:00"
+    },
+    "Bybit_LMWRUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "LMWRUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.09688,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:12.335653+00:00"
+    },
+    "Bybit_APRSUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "APRSUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.005226,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:33:13.253508+00:00"
+    },
+    "Bybit_JEFFUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "JEFFUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.001785,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:14.430014+00:00"
+    },
+    "Bybit_METHUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "METHUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 2722.71,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:15.341345+00:00"
+    },
+    "Bybit_MOGUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "MOGUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 9.01e-07,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:16.504100+00:00"
+    },
+    "Bybit_ZIGUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "ZIGUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.09764,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:17.412437+00:00"
     },
     "Bybit_WEMIXUSDT_spot_1M": {
       "exchange": "Bybit",
@@ -2555,88 +2492,439 @@
       "interval": "1M",
       "price": 0.7334,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:48.580660+00:00"
+      "timestamp": "2025-06-23T02:33:18.575251+00:00"
     },
-    "Bybit_SUPRAUSDT_spot_1w": {
+    "Bybit_PPTUSDT_spot_1d": {
       "exchange": "Bybit",
-      "symbol": "SUPRAUSDT",
-      "market": "spot",
-      "interval": "1w",
-      "price": 0.00434,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:50.011444+00:00"
-    },
-    "Bybit_CTAUSDT_spot_1d": {
-      "exchange": "Bybit",
-      "symbol": "CTAUSDT",
+      "symbol": "PPTUSDT",
       "market": "spot",
       "interval": "1d",
-      "price": 0.05982,
-      "signal_type": "bullish",
-      "timestamp": "2025-06-22T02:33:50.925753+00:00"
+      "price": 0.45385,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:19.492543+00:00"
     },
-    "Bybit_ZORAUSDT_spot_1w": {
+    "Bybit_XZKUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "XZKUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.0093,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:20.652938+00:00"
+    },
+    "Bybit_ZORAUSDT_spot_1M": {
       "exchange": "Bybit",
       "symbol": "ZORAUSDT",
       "market": "spot",
+      "interval": "1M",
+      "price": 0.01335,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:21.587925+00:00"
+    },
+    "Bybit_ROOTUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "ROOTUSDT",
+      "market": "spot",
       "interval": "1w",
-      "price": 0.01028,
+      "price": 0.005267,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:52.084334+00:00"
+      "timestamp": "2025-06-23T02:33:22.762999+00:00"
     },
-    "Bybit_MEEUSDT_spot_1d": {
+    "Bybit_APEXUSDT_spot_1M": {
       "exchange": "Bybit",
-      "symbol": "MEEUSDT",
+      "symbol": "APEXUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.8249,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:23.681913+00:00"
+    },
+    "Bybit_LMWRUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "LMWRUSDT",
       "market": "spot",
       "interval": "1d",
-      "price": 0.002631,
+      "price": 0.06543,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:52.733133+00:00"
+      "timestamp": "2025-06-23T02:33:24.844367+00:00"
     },
-    "Bybit_GENEUSDT_spot_1d": {
+    "Bybit_MPLXUSDT_spot_1M": {
       "exchange": "Bybit",
-      "symbol": "GENEUSDT",
+      "symbol": "MPLXUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.19864,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:25.750959+00:00"
+    },
+    "Bybit_ASRRUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "ASRRUSDT",
       "market": "spot",
       "interval": "1d",
-      "price": 0.05838,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:54.200581+00:00"
+      "price": 0.1522,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:33:26.921433+00:00"
     },
-    "Bybit_ODOSUSDT_spot_1d": {
+    "Bybit_NEIROCTOUSDT_spot_1d": {
       "exchange": "Bybit",
-      "symbol": "ODOSUSDT",
+      "symbol": "NEIROCTOUSDT",
       "market": "spot",
       "interval": "1d",
-      "price": 0.005082,
+      "price": 0.0003314,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:33:27.851650+00:00"
+    },
+    "Bybit_FORTUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "FORTUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.06299,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:33:29.012946+00:00"
+    },
+    "Bybit_APEXUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "APEXUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.2015,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:54.834965+00:00"
+      "timestamp": "2025-06-23T02:33:29.935589+00:00"
+    },
+    "Bybit_AFCUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "AFCUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.6078,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:31.113158+00:00"
+    },
+    "Bybit_SWEATUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "SWEATUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.002828,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:32.030342+00:00"
     },
     "Bybit_ZORAUSDT_spot_1d": {
       "exchange": "Bybit",
       "symbol": "ZORAUSDT",
       "market": "spot",
       "interval": "1d",
-      "price": 0.008708,
-      "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:55.749814+00:00"
+      "price": 0.008269,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:33:33.205986+00:00"
     },
-    "Bybit_TIMEUSDT_spot_1d": {
+    "Bybit_MIXUSDT_spot_1w": {
       "exchange": "Bybit",
-      "symbol": "TIMEUSDT",
+      "symbol": "MIXUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.001118,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:34.130031+00:00"
+    },
+    "Bybit_MVUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "MVUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.006331,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:35.291911+00:00"
+    },
+    "Bybit_AMIUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "AMIUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.07513,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:36.213720+00:00"
+    },
+    "Bybit_SALDUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "SALDUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.0001842,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:33:37.375735+00:00"
+    },
+    "Bybit_DIAMUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "DIAMUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.01394,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:38.286312+00:00"
+    },
+    "Bybit_MVUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "MVUSDT",
       "market": "spot",
       "interval": "1d",
-      "price": 11.047,
+      "price": 0.006574,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:56.907250+00:00"
+      "timestamp": "2025-06-23T02:33:39.473830+00:00"
     },
-    "Bybit_EXVGUSDT_spot_1d": {
+    "Bybit_GSTUSDT_spot_1d": {
       "exchange": "Bybit",
-      "symbol": "EXVGUSDT",
+      "symbol": "GSTUSDT",
       "market": "spot",
       "interval": "1d",
-      "price": 0.005057,
+      "price": 0.006231,
       "signal_type": "bearish",
-      "timestamp": "2025-06-22T02:33:58.346385+00:00"
+      "timestamp": "2025-06-23T02:33:40.395136+00:00"
+    },
+    "Bybit_DIAMUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "DIAMUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.01239,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:41.557336+00:00"
+    },
+    "Bybit_RPKUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "RPKUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.001307,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:42.470887+00:00"
+    },
+    "Bybit_OMGUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "OMGUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.1784,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:33:43.642277+00:00"
+    },
+    "Bybit_GALAXISUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "GALAXISUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.0002574,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:44.572291+00:00"
+    },
+    "Bybit_VPRUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "VPRUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.0005267,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:33:45.734067+00:00"
+    },
+    "Bybit_KUBUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "KUBUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 1.4788,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:46.655248+00:00"
+    },
+    "Bybit_NAVXUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "NAVXUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.05823,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:47.832782+00:00"
+    },
+    "Bybit_ESEUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "ESEUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.010258,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:48.746750+00:00"
+    },
+    "Bybit_LLUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "LLUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.01223,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:33:49.910387+00:00"
+    },
+    "Bybit_FITFIUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "FITFIUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.001648,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:50.823274+00:00"
+    },
+    "Bybit_MBXUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "MBXUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.2068,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:51.984253+00:00"
+    },
+    "Bybit_USDEUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "USDEUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.9999,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:33:52.897457+00:00"
+    },
+    "Bybit_RPKUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "RPKUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.000979,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:33:54.058237+00:00"
+    },
+    "Bybit_BBSOLUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "BBSOLUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 166.58,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:54.979253+00:00"
+    },
+    "Bybit_BABY1USDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "BABY1USDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.10541,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:56.152536+00:00"
+    },
+    "Bybit_VPRUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "VPRUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.0006895,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:57.075812+00:00"
+    },
+    "Bybit_BRAWLUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "BRAWLUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 6.52e-05,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:33:58.238414+00:00"
+    },
+    "Bybit_PURSEUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "PURSEUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 7.334e-05,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:33:59.163147+00:00"
+    },
+    "Bybit_INTERUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "INTERUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.874,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:34:00.326048+00:00"
+    },
+    "Bybit_DOMEUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "DOMEUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.0002173,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:34:01.242279+00:00"
+    },
+    "Bybit_PURSEUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "PURSEUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 4.542e-05,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:34:02.405775+00:00"
+    },
+    "Bybit_CTAUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "CTAUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.01946,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:34:03.322331+00:00"
+    },
+    "Bybit_ELIXUSDT_spot_1M": {
+      "exchange": "Bybit",
+      "symbol": "ELIXUSDT",
+      "market": "spot",
+      "interval": "1M",
+      "price": 0.006347,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:34:04.497683+00:00"
+    },
+    "Bybit_BBQUSDT_spot_1w": {
+      "exchange": "Bybit",
+      "symbol": "BBQUSDT",
+      "market": "spot",
+      "interval": "1w",
+      "price": 0.01575,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:34:05.422497+00:00"
+    },
+    "Bybit_BBQUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "BBQUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.01497,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:34:06.581831+00:00"
+    },
+    "Bybit_SHRAPUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "SHRAPUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.003316,
+      "signal_type": "bullish",
+      "timestamp": "2025-06-23T02:34:07.485716+00:00"
+    },
+    "Bybit_SVLUSDT_spot_1d": {
+      "exchange": "Bybit",
+      "symbol": "SVLUSDT",
+      "market": "spot",
+      "interval": "1d",
+      "price": 0.005361,
+      "signal_type": "bearish",
+      "timestamp": "2025-06-23T02:34:08.729127+00:00"
     }
   }
 }
