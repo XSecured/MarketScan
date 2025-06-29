@@ -78,6 +78,30 @@ def load_levels_from_file(filename="detected_levels.json"):
         logging.error(f"Failed to load previous levels: {e}")
         return {}
 
+# --- Message Editing Functions ---
+LEVEL_MSG_FILE = "level_alert_message.json"
+
+def save_level_message_id(message_id: int):
+    with open(LEVEL_MSG_FILE, "w") as f:
+        json.dump(
+            {"message_id": message_id,
+             "timestamp": datetime.now(timezone.utc).isoformat()},
+            f
+        )
+
+def load_level_message_id() -> int | None:
+    if not os.path.exists(LEVEL_MSG_FILE):
+        return None
+    try:
+        with open(LEVEL_MSG_FILE) as f:
+            return json.load(f).get("message_id")
+    except Exception:
+        return None
+
+def clear_level_message_id():
+    if os.path.exists(LEVEL_MSG_FILE):
+        os.remove(LEVEL_MSG_FILE)
+
 # --- Simplified Alert System Using Existing Infrastructure ---
 
 def check_level_hits_simple_concurrent(levels, binance_client, bybit_client):
@@ -875,17 +899,36 @@ async def main():
             alert_messages = create_alerts_telegram_report(hits)
      
             # Now it's just one message instead of multiple
-            for msg in alert_messages:  # This will only loop once now
-                try:
-                    await bot.send_message(chat_id=int(TELEGRAM_CHAT_ID), text=msg, parse_mode='Markdown')
-                    logging.info("Alert message sent successfully.")
-                except Exception as e:
-                    logging.error(f"Failed to send alert: {e}")
+            msg = alert_messages[0]
+            stored_id = load_level_message_id()
+
+            try:
+                if stored_id:                          # edit the existing alert
+                    await bot.edit_message_text(
+                        chat_id=int(TELEGRAM_CHAT_ID),
+                        message_id=stored_id,
+                        text=msg,
+                        parse_mode='Markdown'
+                    )
+                    logging.info("Level alert message UPDATED")
+                else:                                   # first alert of the day
+                    sent = await bot.send_message(
+                        chat_id=int(TELEGRAM_CHAT_ID),
+                        text=msg,
+                        parse_mode='Markdown'
+                    )
+                    save_level_message_id(sent.message_id)
+                    logging.info("Level alert message SENT and ID stored")
+            except Exception as e:
+                logging.error(f"Failed to send/edit alert: {e}")
+
         else:
             logging.info("✅ No level hits detected")
 
     else:
         # FULL SCAN MODE: Do complete pattern detection
+        # new day → start a fresh LEVEL ALERT thread
+        clear_level_message_id()
         logging.info("🔍 Full scan mode - performing complete pattern detection...")
         
         proxy_url = os.getenv("PROXY_LIST_URL")
