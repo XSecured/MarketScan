@@ -27,35 +27,21 @@ IGNORED_SYMBOLS = {
 
 # --- Level Persistence Functions ---
 
-def save_levels_to_file(results, binance_client, bybit_client, filename="detected_levels.json"):
-    """Save detected levels to JSON file in repo"""
-    levels_data = {
-        "last_updated": datetime.now(timezone.utc).isoformat(),
-        "levels": {}
-    }
-    
-    for exchange, symbol, market, interval, signal_type in results:
+def save_levels_to_file(results, filename="detected_levels.json"):
+    levels_data = {"last_updated": datetime.now(timezone.utc).isoformat(),
+                   "levels": {}}
+
+    for exchange, symbol, market, interval, signal_type, price in results:
         key = f"{exchange}_{symbol}_{market}_{interval}"
-        try:
-            # Get the actual price level for this result
-            client = binance_client if exchange == "Binance" else bybit_client
-            df = client.fetch_ohlcv(symbol, interval, limit=3, market=market)
-            equal_price, _ = check_equal_price_and_classify(df)
-            
-            if equal_price is not None:
-                levels_data["levels"][key] = {
-                    "exchange": exchange,
-                    "symbol": symbol,
-                    "market": market,
-                    "interval": interval,
-                    "price": float(equal_price),
-                    "signal_type": signal_type,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
-        except Exception as e:
-            logging.warning(f"Failed to get price for {key}: {e}")
-    
-    # Save to file
+        levels_data["levels"][key] = {
+            "exchange": exchange,
+            "symbol":   symbol,
+            "market":   market,
+            "interval": interval,
+            "price":    float(price),
+            "signal_type": signal_type,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
     with open(filename, "w") as f:
         json.dump(levels_data, f, indent=2)
     
@@ -697,8 +683,11 @@ class BybitClient:
 
 # --- Helper functions ---
 
-def floats_are_equal(a, b, tol=1e-8):
-    return abs(a - b) < tol
+def floats_are_equal(a: float, b: float, rel_tol: float = 0.003) -> bool:
+    """
+    Return True if a and b differ by less than rel_tol (0.003 = 0.30 %)
+    """
+    return abs(a - b) <= rel_tol * ( (a + b) / 2.0 )
 
 def check_equal_price_and_classify(df):
     """Check if last two CLOSED candles have equal close=open AND opposite colors for reversal signal"""
@@ -981,7 +970,9 @@ async def main():
                     if equal_price is not None and signal_type is not None:
                         if not current_candle_touched_price(df, equal_price):
                             with lock:
-                                results.append((exchange_name, symbol, market, interval, signal_type))
+                                results.append(
+                                    (exchange_name, symbol, market, interval, signal_type, equal_price)
+                                )
                 except Exception as e:
                     logging.warning(f"Failed {exchange_name} {symbol} {market} {interval}: {e}")
 
