@@ -919,8 +919,14 @@ async def main():
                     )
                     save_level_message_id(sent.message_id)
                     logging.info("Level alert message SENT and ID stored")
-            except Exception as e:
-                logging.error(f"Failed to send/edit alert: {e}")
+            except Exception as e:                     # optional fallback
+                logging.warning(f"Edit failed: {e} — sending new alert")
+                sent = await bot.send_message(
+                    chat_id=int(TELEGRAM_CHAT_ID),
+                    text=msg,
+                    parse_mode='Markdown'
+                )
+                save_level_message_id(sent.message_id)
 
         else:
             logging.info("✅ No level hits detected")
