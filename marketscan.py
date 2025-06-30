@@ -178,11 +178,9 @@ def create_alerts_telegram_report(hits):
     if not hits:
         return ["💥 *LEVEL ALERTS* 💥\n\n❌ No levels got hit at this time."]
 
-    # Get timestamp
-    utc_now = UTC_NOW_RUN
+    # timestamp (reuse global UTC_NOW_RUN)
     utc_plus_3 = timezone(timedelta(hours=3))
-    current_time = utc_now.astimezone(utc_plus_3)
-    timestamp = current_time.strftime("%Y-%m-%d %H:%M:%S UTC+3")
+    timestamp = UTC_NOW_RUN.astimezone(utc_plus_3).strftime("%Y-%m-%d %H:%M:%S UTC+3")
 
     # Group hits by timeframe and exchange
     timeframes = {}
@@ -703,23 +701,25 @@ def current_candle_touched_price(df, price):
     return float(current_candle['low']) <= price <= float(current_candle['high'])
 
 def create_beautiful_telegram_report(results):
-    """Create clean telegram report with bullet points, minimal parts"""
-    
     if not results:
         return ["💥 *Reversal Level Scanner*\n\n❌ No qualifying reversal patterns found at this time."]
-    
-    # Organize by timeframe first
+
+    # ------------- group by TF / exchange -------------
     timeframes = {}
-    for exchange, symbol, market, interval, signal_type in results:
+    for entry in results:
+        # works whether the tuple is 5- or 6-element
+        exchange, symbol, market, interval, signal_type = entry[:5]
+
         if interval not in timeframes:
-            timeframes[interval] = {"Binance": {"bullish": [], "bearish": []}, "Bybit": {"bullish": [], "bearish": []}}
+            timeframes[interval] = {
+                "Binance": {"bullish": [], "bearish": []},
+                "Bybit":   {"bullish": [], "bearish": []}
+            }
         timeframes[interval][exchange][signal_type].append(symbol)
     
-    # Get timestamp
-    utc_now = UTC_NOW_RUN
+    # timestamp (reuse global UTC_NOW_RUN)
     utc_plus_3 = timezone(timedelta(hours=3))
-    current_time = utc_now.astimezone(utc_plus_3)
-    timestamp = current_time.strftime("%Y-%m-%d %H:%M:%S UTC+3")
+    timestamp = UTC_NOW_RUN.astimezone(utc_plus_3).strftime("%Y-%m-%d %H:%M:%S UTC+3")
     
     # Count totals
     total_signals = len(results)
