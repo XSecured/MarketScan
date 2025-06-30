@@ -804,23 +804,32 @@ def create_beautiful_telegram_report(results):
     
     return messages
 
-async def safe_send_markdown(bot: Bot, chat_id: int, text: str):
+async def safe_send_markdown(bot: Bot, chat_id: int, text: str) -> "telegram.Message":
     """
-    Guarantees that no chunk exceeds Telegram’s 4096-character limit.
-    Splits on newline boundaries, keeps Markdown intact.
+    Send Markdown text in ≤4 000-character blocks.
+    Return the *first* Message object so callers can keep `message_id`.
     """
     if len(text) <= MAX_TG_CHARS:
-        await bot.send_message(chat_id=chat_id, text=text, parse_mode='Markdown')
-        return
+        return await bot.send_message(chat_id=chat_id,
+                                      text=text,
+                                      parse_mode='Markdown')
 
+    first_msg = None
     chunk = ''
     for line in text.splitlines(keepends=True):
         if len(chunk) + len(line) > MAX_TG_CHARS:
-            await bot.send_message(chat_id=chat_id, text=chunk, parse_mode='Markdown')
+            m = await bot.send_message(chat_id=chat_id, text=chunk,
+                                       parse_mode='Markdown')
+            first_msg = first_msg or m
             chunk = ''
         chunk += line
+
     if chunk.strip():
-        await bot.send_message(chat_id=chat_id, text=chunk, parse_mode='Markdown')
+        m = await bot.send_message(chat_id=chat_id, text=chunk,
+                                   parse_mode='Markdown')
+        first_msg = first_msg or m
+
+    return first_msg
 
 # --- Main async scanning and reporting ---
 
@@ -847,7 +856,7 @@ async def main():
     
     if run_mode == "price_check":
         # CONCURRENT MODE: Check level hits using ThreadPoolExecutor like full scan
-        logging.info("🔍 Concurrent price check mode - using ThreadPoolExecutor...")
+        logging.info("🔍 Concurrent Price Check Mode - using ThreadPoolExecutor...")
     
         levels = load_levels_from_file()
         if not levels:
@@ -890,7 +899,8 @@ async def main():
                     logging.info("Level alert message UPDATED")
                 else:                                   # first alert of the day
                     sent = await safe_send_markdown(bot, int(TELEGRAM_CHAT_ID), msg)
-                    save_level_message_id(sent.message_id)
+                    if sent:
+                        save_level_message_id(sent.message_id)
                     logging.info("Level alert message SENT and ID stored")
                     
             except Exception as e:                     # optional fallback
