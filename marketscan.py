@@ -16,14 +16,12 @@ import json
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# --------------------------------------------------
-# 1.  Shared helpers and constants
-# --------------------------------------------------
+# Shared helpers and constants
+
 FETCH_TIMEOUT_TOTAL = 15          # hard stop for one OHLCV fetch
 REQUEST_TIMEOUT     = 5           # per-request timeout handed to requests
-MAX_RETRIES         = 5           # how many times we retry per proxy
-UTC_NOW_RUN = datetime.utcnow().replace(tzinfo=timezone.utc)          # 1-shot UTC timestamp
-
+MAX_RETRIES         = 5           # fast-fail: only two retries
+UTC_NOW_RUN         = None        # will be filled inside main()
 
 # List of symbols to ignore in all scanning
 IGNORED_SYMBOLS = {
@@ -486,7 +484,28 @@ class BinanceClient:
                 time.sleep(self.retry_delay * attempt + random.uniform(0, .5))
         return []
 
-    # get_spot_symbols identical to above – omitted for brevity
+    def get_spot_symbols(self):
+        url = 'https://api.binance.com/api/v3/exchangeInfo'
+        for attempt in range(1, self.max_retries + 1):
+            proxy = self.proxy_pool.get_next_proxy()
+            if proxy is None:
+                logging.error("No proxies available to fetch spot symbols")
+                time.sleep(self.retry_delay)
+                continue
+            try:
+                resp = self.session.get(url,
+                                        proxies={"http": proxy, "https": proxy},
+                                        timeout=self.req_timeout)
+                resp.raise_for_status()
+                data = resp.json()
+                return [s['symbol'] for s in data['symbols']
+                        if s['status'] == 'TRADING' and s.get('quoteAsset') == 'USDT']
+            except Exception as e:
+                logging.warning(f"Attempt {attempt} failed with proxy {proxy}: {e}")
+                self.proxy_pool.mark_proxy_failure(proxy)
+                time.sleep(self.retry_delay * attempt + random.uniform(0, .5))
+        return []
+
     # --------------------------------------------------
     def fetch_ohlcv(self, symbol, interval, limit=100, market="spot"):
         base = 'https://api.binance.com/api/v3/klines' if market == "spot" \
@@ -539,8 +558,63 @@ class BybitClient:
             raise RuntimeError("No working proxies available")
         return {"http": proxy, "https": proxy}
 
-    # get_perp_symbols / get_spot_symbols → cut to 2 retries & 5-second timeout
-    # (identical to Binance version; use self.session)
+    # --------------------------------------------------
+    # perp symbols
+    # --------------------------------------------------
+    def get_perp_symbols(self):
+        url     = 'https://api.bybit.com/v5/market/instruments-info'
+        params  = {'category': 'linear'}
+        for attempt in range(1, self.max_retries + 1):
+            proxy = self.proxy_pool.get_next_proxy()
+            if proxy is None:
+                logging.error("No proxies available to fetch Bybit perp symbols")
+                time.sleep(self.retry_delay)
+                continue
+            try:
+                resp = self.session.get(
+                    url, params=params,
+                    proxies={"http": proxy, "https": proxy},
+                    timeout=self.req_timeout
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                return [s['symbol'] for s in data['result']['list']
+                        if s['status'] == 'Trading'
+                        and s['quoteCoin'] == 'USDT']
+            except Exception as e:
+                logging.warning(f"Attempt {attempt} failed with proxy {proxy}: {e}")
+                self.proxy_pool.mark_proxy_failure(proxy)
+                time.sleep(self.retry_delay * attempt + random.uniform(0, .5))
+        return []
+
+    # --------------------------------------------------
+    # spot symbols
+    # --------------------------------------------------
+    def get_spot_symbols(self):
+        url     = 'https://api.bybit.com/v5/market/instruments-info'
+        params  = {'category': 'spot'}
+        for attempt in range(1, self.max_retries + 1):
+            proxy = self.proxy_pool.get_next_proxy()
+            if proxy is None:
+                logging.error("No proxies available to fetch Bybit spot symbols")
+                time.sleep(self.retry_delay)
+                continue
+            try:
+                resp = self.session.get(
+                    url, params=params,
+                    proxies={"http": proxy, "https": proxy},
+                    timeout=self.req_timeout
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                return [s['symbol'] for s in data['result']['list']
+                        if s['status'] == 'Trading'
+                        and s['quoteCoin'] == 'USDT']
+            except Exception as e:
+                logging.warning(f"Attempt {attempt} failed with proxy {proxy}: {e}")
+                self.proxy_pool.mark_proxy_failure(proxy)
+                time.sleep(self.retry_delay * attempt + random.uniform(0, .5))
+        return []
 
     def fetch_ohlcv(self, symbol, interval, limit=100, market="spot"):
         url       = 'https://api.bybit.com/v5/market/kline'
@@ -731,9 +805,14 @@ def create_beautiful_telegram_report(results):
 # --- Main async scanning and reporting ---
 
 async def main():
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+    logging.basicConfig(level=logging.INFO,
+                        format='%(asctime)s %(levelname)s %(message)s')
+
+    # fresh timestamp for **this** run
+    global UTC_NOW_RUN
+    UTC_NOW_RUN = datetime.utcnow().replace(tzinfo=timezone.utc)
     
-    # Determine run mode
+    # Determine Run Mode
     run_mode = os.getenv("RUN_MODE", "full_scan")
     logging.info(f"Running in {run_mode} mode")
     
