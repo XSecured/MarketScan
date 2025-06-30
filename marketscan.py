@@ -15,6 +15,7 @@ from datetime import datetime, timezone, timedelta
 import json
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from telegram.error import BadRequest
 
 # Shared helpers and constants
 
@@ -22,6 +23,7 @@ FETCH_TIMEOUT_TOTAL = 15          # hard stop for one OHLCV fetch
 REQUEST_TIMEOUT     = 5           # per-request timeout handed to requests
 MAX_RETRIES         = 5           # fast-fail: only two retries
 UTC_NOW_RUN         = None        # will be filled inside main()
+MAX_TG_CHARS        = 4_000       # safe margin below 4 096
 
 # List of symbols to ignore in all scanning
 IGNORED_SYMBOLS = {
@@ -802,6 +804,24 @@ def create_beautiful_telegram_report(results):
     
     return messages
 
+async def safe_send_markdown(bot: Bot, chat_id: int, text: str):
+    """
+    Guarantees that no chunk exceeds Telegram’s 4096-character limit.
+    Splits on newline boundaries, keeps Markdown intact.
+    """
+    if len(text) <= MAX_TG_CHARS:
+        await bot.send_message(chat_id=chat_id, text=text, parse_mode='Markdown')
+        return
+
+    chunk = ''
+    for line in text.splitlines(keepends=True):
+        if len(chunk) + len(line) > MAX_TG_CHARS:
+            await bot.send_message(chat_id=chat_id, text=chunk, parse_mode='Markdown')
+            chunk = ''
+        chunk += line
+    if chunk.strip():
+        await bot.send_message(chat_id=chat_id, text=chunk, parse_mode='Markdown')
+
 # --- Main async scanning and reporting ---
 
 async def main():
@@ -869,20 +889,13 @@ async def main():
                     )
                     logging.info("Level alert message UPDATED")
                 else:                                   # first alert of the day
-                    sent = await bot.send_message(
-                        chat_id=int(TELEGRAM_CHAT_ID),
-                        text=msg,
-                        parse_mode='Markdown'
-                    )
+                    sent = await safe_send_markdown(bot, int(TELEGRAM_CHAT_ID), msg)
                     save_level_message_id(sent.message_id)
                     logging.info("Level alert message SENT and ID stored")
+                    
             except Exception as e:                     # optional fallback
                 logging.warning(f"Edit failed: {e} — sending new alert")
-                sent = await bot.send_message(
-                    chat_id=int(TELEGRAM_CHAT_ID),
-                    text=msg,
-                    parse_mode='Markdown'
-                )
+                sent = await safe_send_markdown(bot, int(TELEGRAM_CHAT_ID), msg)
                 save_level_message_id(sent.message_id)
 
         else:
@@ -959,13 +972,13 @@ async def main():
         messages = create_beautiful_telegram_report(results)
         for msg in messages:
             try:
-                await bot.send_message(chat_id=int(TELEGRAM_CHAT_ID), text=msg, parse_mode='Markdown')
+                await safe_send_markdown(bot, int(TELEGRAM_CHAT_ID), msg)
                 await asyncio.sleep(1)  # Rate limiting
             except Exception as e:
                 logging.error(f"Failed to send Telegram message: {e}")
 
         # Save current results for next run
-        save_levels_to_file(results, binance_client, bybit_client)
+        save_levels_to_file(results)
         logging.info("Saved current levels for next run")
 
 if __name__ == "__main__":
