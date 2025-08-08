@@ -702,15 +702,51 @@ def current_candle_touched_price(df, price):
     current_candle = df.iloc[0]
     return float(current_candle['low']) <= price <= float(current_candle['high'])
 
+def check_low_movement_daily_candle(df, threshold_percent=2.5):
+    """
+    Checks if the movement between open and close of the last closed daily candle
+    is less than the specified threshold percentage.
+    Returns the percentage movement if it meets the criteria, otherwise None.
+    """
+    if df.empty or len(df) < 2:  # Need at least one closed candle
+        return None
+
+    # API returns newest to oldest, so df.iloc[1] is the last closed candle
+    last_closed_candle = df.iloc[1]
+    open_price = float(last_closed_candle['open'])
+    close_price = float(last_closed_candle['close'])
+
+    if open_price == 0:  # Avoid division by zero
+        return None
+
+    movement_percent = abs((close_price - open_price) / open_price) * 100
+
+    if movement_percent < threshold_percent:
+        return movement_percent
+    return None    
+
 def create_beautiful_telegram_report(results):
     if not results:
         return ["💥 *Reversal Level Scanner*\n\n❌ No qualifying reversal patterns found at this time."]
 
     # ------------- group by TF / exchange -------------
     timeframes = {}
+    low_movement_daily = [] # NEW: To store low movement daily candles
+
     for entry in results:
         # works whether the tuple is 5- or 6-element
         exchange, symbol, market, interval, signal_type = entry[:5]
+
+        # NEW: Handle low_movement signals separately
+        if signal_type == "low_movement":
+            # The last element for low_movement is the percentage, not price
+            movement_percent = entry[5] 
+            low_movement_daily.append({
+                "exchange": exchange,
+                "symbol": symbol,
+                "movement_percent": movement_percent
+            })
+            continue # Skip to next entry as it's not a reversal pattern
 
         if interval not in timeframes:
             timeframes[interval] = {
@@ -723,21 +759,21 @@ def create_beautiful_telegram_report(results):
     utc_plus_3 = timezone(timedelta(hours=3))
     timestamp = UTC_NOW_RUN.astimezone(utc_plus_3).strftime("%Y-%m-%d %H:%M:%S UTC+3")
     
-    # Count totals
-    total_signals = len(results)
-    binance_count = len([r for r in results if r[0] == "Binance"])
-    bybit_count = len([r for r in results if r[0] == "Bybit"])
+    # Count totals (adjust total_signals to exclude low_movement for the summary)
+    total_reversal_signals = len([r for r in results if r[4] != "low_movement"]) # Exclude low_movement
+    binance_count = len([r for r in results if r[0] == "Binance" and r[4] != "low_movement"])
+    bybit_count = len([r for r in results if r[0] == "Bybit" and r[4] != "low_movement"])
     
     messages = []
     
     # Summary message
     summary = "💥 *Reversal Level Scanner*\n\n"
-    summary += f"✅ Total Signals: {total_signals}\n\n"
+    summary += f"✅ Total Reversal Signals: {total_reversal_signals}\n\n" # Adjusted count
     summary += f"*Binance*: {binance_count} | *Bybit*: {bybit_count}\n\n"
     summary += f"🕒 {timestamp}"
     messages.append(summary)
     
-    # Process each timeframe
+    # Process each timeframe (existing logic)
     timeframe_order = ["1M", "1w", "1d"]
     for timeframe in timeframe_order:
         if timeframe not in timeframes:
@@ -801,6 +837,32 @@ def create_beautiful_telegram_report(results):
         # Add the completed timeframe message
         if current_msg.strip():
             messages.append(current_msg.strip())
+
+    # NEW: Add Low Movement Daily Candles section
+    if low_movement_daily:
+        # Sort by movement_percent in ascending order (smallest movement first)
+        low_movement_daily_sorted = sorted(low_movement_daily, key=lambda x: x['movement_percent'])
+
+        low_movement_msg = "📉 *Low Movement Daily Candles (<2.5%)*\n\n"
+        
+        # Group by exchange for better readability
+        binance_low_movement = [item for item in low_movement_daily_sorted if item['exchange'] == 'Binance']
+        bybit_low_movement = [item for item in low_movement_daily_sorted if item['exchange'] == 'Bybit']
+
+        if binance_low_movement:
+            low_movement_msg += "*Binance*:\n"
+            for item in binance_low_movement:
+                low_movement_msg += f"• {item['symbol']} ({item['movement_percent']:.2f}%)\n"
+            low_movement_msg += "\n"
+
+        if bybit_low_movement:
+            low_movement_msg += "*Bybit*:\n"
+            for item in bybit_low_movement:
+                low_movement_msg += f"• {item['symbol']} ({item['movement_percent']:.2f}%)\n"
+            low_movement_msg += "\n"
+
+        low_movement_msg += "——————————————————\n\n"
+        messages.append(low_movement_msg.strip())
     
     return messages
 
@@ -956,6 +1018,8 @@ async def main():
             for interval in ["1M", "1w", "1d"]:
                 try:
                     df = client.fetch_ohlcv(symbol, interval, limit=3, market=market)
+                    
+                    # Existing reversal pattern check
                     equal_price, signal_type = check_equal_price_and_classify(df)
                     if equal_price and signal_type and \
                        not current_candle_touched_price(df, equal_price):
@@ -964,6 +1028,19 @@ async def main():
                                 exchange_name, symbol, market,
                                 interval, signal_type, equal_price   # keep tuple
                             ))
+
+                    # NEW: Check for low movement daily candle
+                    if interval == "1d":
+                        movement_percent = check_low_movement_daily_candle(df, threshold_percent=2.5)
+                        if movement_percent is not None:
+                            with lock:
+                                # Store as a new type of result, e.g., "low_movement"
+                                # We'll use a specific signal_type and store the movement_percent
+                                results.append((
+                                    exchange_name, symbol, market,
+                                    interval, "low_movement", movement_percent
+                                ))
+
                 except Exception as e:
                     logging.warning(f"Failed {exchange_name} {symbol} {market} {interval}: {e}")
 
