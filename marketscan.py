@@ -725,145 +725,113 @@ def check_low_movement_daily_candle(df, threshold_percent=2.5):
         return movement_percent
     return None    
 
-def create_beautiful_telegram_report(results):
-    if not results:
-        return ["💥 *Reversal Level Scanner*\n\n❌ No qualifying reversal patterns found at this time."]
+def create_beautiful_telegram_report(results, low_movement_results=None):
+    """
+    Build a beautiful Telegram report for reversal signals,
+    plus a separate section for Low Movement Daily Candles.
+    """
+    if low_movement_results is None:
+        low_movement_results = []
 
-    # ------------- group by TF / exchange -------------
+    if not results and not low_movement_results:
+        return ["💥 *Reversal Level Scanner*\n\n❌ No qualifying signals found at this time."]
+
+    # --- Group reversal signals by TF / exchange ---
     timeframes = {}
-    low_movement_daily = [] # NEW: To store low movement daily candles
-
     for entry in results:
-        # works whether the tuple is 5- or 6-element
-        exchange, symbol, market, interval, signal_type = entry[:5]
-
-        # NEW: Handle low_movement signals separately
-        if signal_type == "low_movement":
-            # The last element for low_movement is the percentage, not price
-            movement_percent = entry[5] 
-            low_movement_daily.append({
-                "exchange": exchange,
-                "symbol": symbol,
-                "movement_percent": movement_percent
-            })
-            continue # Skip to next entry as it's not a reversal pattern
-
+        exchange, symbol, market, interval, signal_type, price = entry
         if interval not in timeframes:
             timeframes[interval] = {
                 "Binance": {"bullish": [], "bearish": []},
-                "Bybit":   {"bullish": [], "bearish": []}
+                "Bybit": {"bullish": [], "bearish": []}
             }
         timeframes[interval][exchange][signal_type].append(symbol)
-    
-    # timestamp (reuse global UTC_NOW_RUN)
+
+    # Timestamp
     utc_plus_3 = timezone(timedelta(hours=3))
     timestamp = UTC_NOW_RUN.astimezone(utc_plus_3).strftime("%Y-%m-%d %H:%M:%S UTC+3")
-    
-    # Count totals (adjust total_signals to exclude low_movement for the summary)
-    total_reversal_signals = len([r for r in results if r[4] != "low_movement"]) # Exclude low_movement
-    binance_count = len([r for r in results if r[0] == "Binance" and r[4] != "low_movement"])
-    bybit_count = len([r for r in results if r[0] == "Bybit" and r[4] != "low_movement"])
-    
+
     messages = []
-    
-    # Summary message
+
+    # --- Summary ---
+    total_reversal_signals = len(results)
+    binance_count = len([r for r in results if r[0] == "Binance"])
+    bybit_count = len([r for r in results if r[0] == "Bybit"])
+
     summary = "💥 *Reversal Level Scanner*\n\n"
-    summary += f"✅ Total Reversal Signals: {total_reversal_signals}\n\n" # Adjusted count
+    summary += f"✅ Total Reversal Signals: {total_reversal_signals}\n\n"
     summary += f"*Binance*: {binance_count} | *Bybit*: {bybit_count}\n\n"
     summary += f"🕒 {timestamp}"
     messages.append(summary)
-    
-    # Process each timeframe (existing logic)
+
+    # --- Each timeframe ---
     timeframe_order = ["1M", "1w", "1d"]
+
     for timeframe in timeframe_order:
         if timeframe not in timeframes:
             continue
-            
         tf_data = timeframes[timeframe]
         tf_total = sum(len(tf_data[ex][st]) for ex in tf_data for st in tf_data[ex])
-        
         if tf_total == 0:
             continue
-        
-        # Start building timeframe message
+
         current_msg = f"📅 *{timeframe} Timeframe* ({tf_total} signals)\n\n"
-        
-        # Process each exchange
         for exchange in ["Binance", "Bybit"]:
             exchange_bullish = sorted(tf_data[exchange]["bullish"])
             exchange_bearish = sorted(tf_data[exchange]["bearish"])
-            
             if not exchange_bullish and not exchange_bearish:
                 continue
-                
+
             current_msg += f"*{exchange}*:\n"
-            
-            # Add bullish symbols
+
             if exchange_bullish:
                 section_start = f"🍏 *Bullish ({len(exchange_bullish)})*\n"
-                
-                # Check if we need to split
-                estimated_length = len(current_msg) + len(section_start) + (len(exchange_bullish) * 15)  # ~15 chars per symbol line
-                
+                estimated_length = len(current_msg) + len(section_start) + (len(exchange_bullish) * 15)
                 if estimated_length > 3500:
-                    # Start new message for this section
                     messages.append(current_msg.strip())
                     current_msg = f"📅 *{timeframe} - {exchange} Bullish*\n\n"
-                
                 current_msg += section_start
                 for symbol in exchange_bullish:
                     current_msg += f"• {symbol}\n"
                 current_msg += "\n"
-            
-            # Add bearish symbols
+
             if exchange_bearish:
                 section_start = f"🔻 *Bearish ({len(exchange_bearish)})*\n"
-                
-                # Check if we need to split
                 estimated_length = len(current_msg) + len(section_start) + (len(exchange_bearish) * 15)
-                
                 if estimated_length > 3500:
-                    # Start new message for this section
                     messages.append(current_msg.strip())
                     current_msg = f"📅 *{timeframe} - {exchange} Bearish*\n\n"
-                
                 current_msg += section_start
                 for symbol in exchange_bearish:
                     current_msg += f"• {symbol}\n"
                 current_msg += "\n"
-            
-            current_msg += "——————————————————\n\n"
-        
-        # Add the completed timeframe message
+
+        current_msg += "——————————————————\n\n"
         if current_msg.strip():
             messages.append(current_msg.strip())
 
-    # NEW: Add Low Movement Daily Candles section
-    if low_movement_daily:
-        # Sort by movement_percent in ascending order (smallest movement first)
-        low_movement_daily_sorted = sorted(low_movement_daily, key=lambda x: x['movement_percent'])
+    # --- Low Movement Section ---
+    if low_movement_results:
+        low_sorted = sorted(low_movement_results, key=lambda x: x['movement_percent'])
+        low_msg = "📉 *Low Movement Daily Candles (<2.5%)*\n\n"
+        binance_low = [item for item in low_sorted if item['exchange'] == 'Binance']
+        bybit_low = [item for item in low_sorted if item['exchange'] == 'Bybit']
 
-        low_movement_msg = "📉 *Low Movement Daily Candles (<2.5%)*\n\n"
-        
-        # Group by exchange for better readability
-        binance_low_movement = [item for item in low_movement_daily_sorted if item['exchange'] == 'Binance']
-        bybit_low_movement = [item for item in low_movement_daily_sorted if item['exchange'] == 'Bybit']
+        if binance_low:
+            low_msg += "*Binance*:\n"
+            for item in binance_low:
+                low_msg += f"• {item['symbol']} ({item['movement_percent']:.2f}%)\n"
+            low_msg += "\n"
 
-        if binance_low_movement:
-            low_movement_msg += "*Binance*:\n"
-            for item in binance_low_movement:
-                low_movement_msg += f"• {item['symbol']} ({item['movement_percent']:.2f}%)\n"
-            low_movement_msg += "\n"
+        if bybit_low:
+            low_msg += "*Bybit*:\n"
+            for item in bybit_low:
+                low_msg += f"• {item['symbol']} ({item['movement_percent']:.2f}%)\n"
+            low_msg += "\n"
 
-        if bybit_low_movement:
-            low_movement_msg += "*Bybit*:\n"
-            for item in bybit_low_movement:
-                low_movement_msg += f"• {item['symbol']} ({item['movement_percent']:.2f}%)\n"
-            low_movement_msg += "\n"
+        low_msg += "——————————————————\n\n"
+        messages.append(low_msg.strip())
 
-        low_movement_msg += "——————————————————\n\n"
-        messages.append(low_movement_msg.strip())
-    
     return messages
 
 async def safe_send_markdown(bot: Bot, chat_id: int, text: str) -> "telegram.Message":
@@ -1011,6 +979,7 @@ async def main():
         logging.info(f"Total symbols to scan after priority deduplication: {total_symbols}")
 
         results = []
+        low_movement_results = []
         lock = threading.Lock()
 
         def scan_symbol(exchange_name, client, symbol, perp_set, spot_set):
@@ -1034,12 +1003,14 @@ async def main():
                         movement_percent = check_low_movement_daily_candle(df, threshold_percent=2.5)
                         if movement_percent is not None:
                             with lock:
-                                # Store as a new type of result, e.g., "low_movement"
-                                # We'll use a specific signal_type and store the movement_percent
-                                results.append((
-                                    exchange_name, symbol, market,
-                                    interval, "low_movement", movement_percent
-                                ))
+                                low_movement_results.append({
+                                "exchange": exchange_name,
+                                "symbol": symbol,
+                                "market": market,
+                                "interval": interval,
+                                "movement_percent": movement_percent
+                                })
+
 
                 except Exception as e:
                     logging.warning(f"Failed {exchange_name} {symbol} {market} {interval}: {e}")
@@ -1056,7 +1027,8 @@ async def main():
                 pass
 
         # Send normal scanning results
-        messages = create_beautiful_telegram_report(results)
+        messages = create_beautiful_telegram_report(results, low_movement_results)
+        
         for msg in messages:
             try:
                 await safe_send_markdown(bot, int(TELEGRAM_CHAT_ID), msg)
