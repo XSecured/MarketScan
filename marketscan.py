@@ -37,17 +37,25 @@ IGNORED_SYMBOLS = {
 
 def save_levels_to_file(results, filename="detected_levels.json"):
     levels_data = {"last_updated": UTC_NOW_RUN.isoformat(), "levels": {}}
+    count = 0
 
     for (exchange, symbol, market, interval, signal_type, price) in results:
+        if signal_type == "low_movement":
+            continue  # never persist low movement
         levels_data["levels"][(key := f"{exchange}_{symbol}_{market}_{interval}")] = {
-            "exchange": exchange, "symbol": symbol, "market": market,
-            "interval": interval, "price": float(price),
-            "signal_type": signal_type, "timestamp": UTC_NOW_RUN.isoformat()
+            "exchange": exchange,
+            "symbol": symbol,
+            "market": market,
+            "interval": interval,
+            "price": float(price),
+            "signal_type": signal_type,
+            "timestamp": UTC_NOW_RUN.isoformat()
         }
+        count += 1
 
     with open(filename, "w") as f:
         json.dump(levels_data, f, indent=2)
-    logging.info(f"Saved {len(levels_data['levels'])} levels to {filename}")
+    logging.info(f"Saved {count} levels to {filename}")
 
 def load_levels_from_file(filename="detected_levels.json"):
     """Load previously detected levels from JSON file"""
@@ -912,6 +920,8 @@ async def main():
     
         if hits:
             logging.info(f"🚨 Found {len(hits)} level hits!")
+            # Filter out low_movement hits (not supported in alerts system)
+            hits = [h for h in hits if h["signal_type"] in ("bullish", "bearish")]
             alert_messages = create_alerts_telegram_report(hits)
      
             # Now it's just one message instead of multiple
