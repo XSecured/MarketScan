@@ -77,26 +77,31 @@ def load_levels_from_file(filename="detected_levels.json"):
 # --- Message Editing Functions ---
 LEVEL_MSG_FILE = "level_alert_message.json"
 
-def save_level_message_id(message_id: int):
+def save_level_message_ids(message_ids: list[int]): # Changed to list[int]
     with open(LEVEL_MSG_FILE, "w") as f:
         json.dump(
-            {"message_id": message_id,
+            {"message_ids": message_ids, # Changed key to message_ids
              "timestamp": datetime.now(timezone.utc).isoformat()},
             f
         )
 
-def load_level_message_id() -> int | None:
+def load_level_message_ids() -> list[int]: # Changed return type to list[int]
+    """Load previously stored Telegram message IDs for level alerts."""
     if not os.path.exists(LEVEL_MSG_FILE):
-        return None
+        return [] # Return empty list if file doesn't exist
     try:
         with open(LEVEL_MSG_FILE) as f:
-            return json.load(f).get("message_id")
+            data = json.load(f)
+            return data.get("message_ids", []) # Get list, default to empty
     except Exception:
-        return None
+        logging.error("Failed to load previous level message IDs.", exc_info=True)
+        return []
 
-def clear_level_message_id():
+def clear_level_message_ids(): # Renamed for consistency
+    """Clear the stored Telegram message IDs for level alerts."""
     if os.path.exists(LEVEL_MSG_FILE):
         os.remove(LEVEL_MSG_FILE)
+        logging.info(f"Cleared stored message IDs from {LEVEL_MSG_FILE}")
 
 # --- Simplified Alert System Using Existing Infrastructure ---
 
@@ -741,8 +746,8 @@ def create_beautiful_telegram_report(results, low_movement_results=None):
     if low_movement_results is None:
         low_movement_results = []
 
-    if not results and not low_movement_results:
-        return ["💥 *Reversal Level Scanner*\n\n❌ No qualifying signals found at this time."]
+    # This function now returns a list of strings, which will be joined later
+    # for the full_scan report, or used as the base for price_check updates.
 
     # --- Group reversal signals by TF / exchange ---
     timeframes = {}
@@ -759,7 +764,7 @@ def create_beautiful_telegram_report(results, low_movement_results=None):
     utc_plus_3 = timezone(timedelta(hours=3))
     timestamp = UTC_NOW_RUN.astimezone(utc_plus_3).strftime("%Y-%m-%d %H:%M:%S UTC+3")
 
-    messages = []
+    report_parts = [] # Collect parts of the report here
 
     # --- Summary ---
     total_reversal_signals = len(results)
@@ -770,7 +775,7 @@ def create_beautiful_telegram_report(results, low_movement_results=None):
     summary += f"✅ Total Reversal Signals: {total_reversal_signals}\n\n"
     summary += f"*Binance*: {binance_count} | *Bybit*: {bybit_count}\n\n"
     summary += f"🕒 {timestamp}"
-    messages.append(summary)
+    report_parts.append(summary)
 
     # --- Each timeframe ---
     timeframe_order = ["1M", "1w", "1d"]
@@ -783,40 +788,29 @@ def create_beautiful_telegram_report(results, low_movement_results=None):
         if tf_total == 0:
             continue
 
-        current_msg = f"📅 *{timeframe} Timeframe* ({tf_total} signals)\n\n"
+        current_tf_section = f"📅 *{timeframe} Timeframe* ({tf_total} signals)\n\n"
         for exchange in ["Binance", "Bybit"]:
             exchange_bullish = sorted(tf_data[exchange]["bullish"])
             exchange_bearish = sorted(tf_data[exchange]["bearish"])
             if not exchange_bullish and not exchange_bearish:
                 continue
 
-            current_msg += f"*{exchange}*:\n"
+            current_tf_section += f"*{exchange}*:\n"
 
             if exchange_bullish:
-                section_start = f"🍏 *Bullish ({len(exchange_bullish)})*\n"
-                estimated_length = len(current_msg) + len(section_start) + (len(exchange_bullish) * 15)
-                if estimated_length > 3500:
-                    messages.append(current_msg.strip())
-                    current_msg = f"📅 *{timeframe} - {exchange} Bullish*\n\n"
-                current_msg += section_start
+                current_tf_section += f"🍏 *Bullish ({len(exchange_bullish)})*\n"
                 for symbol in exchange_bullish:
-                    current_msg += f"• {symbol}\n"
-                current_msg += "\n"
+                    current_tf_section += f"• {symbol}\n"
+                current_tf_section += "\n"
 
             if exchange_bearish:
-                section_start = f"🔻 *Bearish ({len(exchange_bearish)})*\n"
-                estimated_length = len(current_msg) + len(section_start) + (len(exchange_bearish) * 15)
-                if estimated_length > 3500:
-                    messages.append(current_msg.strip())
-                    current_msg = f"📅 *{timeframe} - {exchange} Bearish*\n\n"
-                current_msg += section_start
+                current_tf_section += f"🔻 *Bearish ({len(exchange_bearish)})*\n"
                 for symbol in exchange_bearish:
-                    current_msg += f"• {symbol}\n"
-                current_msg += "\n"
+                    current_tf_section += f"• {symbol}\n"
+                current_tf_section += "\n"
 
-        current_msg += "——————————————————\n\n"
-        if current_msg.strip():
-            messages.append(current_msg.strip())
+        current_tf_section += "——————————————————\n\n"
+        report_parts.append(current_tf_section.strip())
 
     # --- Low Movement Section ---
     if low_movement_results:
@@ -838,36 +832,40 @@ def create_beautiful_telegram_report(results, low_movement_results=None):
             low_msg += "\n"
 
         low_msg += "——————————————————\n\n"
-        messages.append(low_msg.strip())
+        report_parts.append(low_msg.strip())
 
-    return messages
+    return report_parts
 
-async def safe_send_markdown(bot: Bot, chat_id: int, text: str) -> "telegram.Message":
+async def safe_send_markdown(bot: Bot, chat_id: int, text: str) -> list[int]: # Return list of IDs
     """
-    Send Markdown text in ≤4 000-character blocks.
-    Return the *first* Message object so callers can keep `message_id`.
+    Send Markdown text in <=4 000-character blocks.
+    Returns a list of message_ids of all sent messages.
     """
+    sent_message_ids = []
+    
+    # Helper to send a chunk and store its ID
+    async def _send_chunk(chunk_text):
+        try:
+            m = await bot.send_message(chat_id=chat_id, text=chunk_text, parse_mode='Markdown')
+            sent_message_ids.append(m.message_id)
+        except Exception as e:
+            logging.error(f"Error sending message chunk: {e}")
+
     if len(text) <= MAX_TG_CHARS:
-        return await bot.send_message(chat_id=chat_id,
-                                      text=text,
-                                      parse_mode='Markdown')
+        await _send_chunk(text)
+        return sent_message_ids
 
-    first_msg = None
     chunk = ''
     for line in text.splitlines(keepends=True):
         if len(chunk) + len(line) > MAX_TG_CHARS:
-            m = await bot.send_message(chat_id=chat_id, text=chunk,
-                                       parse_mode='Markdown')
-            first_msg = first_msg or m
+            await _send_chunk(chunk)
             chunk = ''
         chunk += line
 
     if chunk.strip():
-        m = await bot.send_message(chat_id=chat_id, text=chunk,
-                                   parse_mode='Markdown')
-        first_msg = first_msg or m
+        await _send_chunk(chunk)
 
-    return first_msg
+    return sent_message_ids
 
 # --- Main async scanning and reporting ---
 
@@ -893,68 +891,107 @@ async def main():
     bot = Bot(token=TELEGRAM_TOKEN)
     
     if run_mode == "price_check":
-        # CONCURRENT MODE: Check level hits using ThreadPoolExecutor like full scan
         logging.info("🔍 Concurrent Price Check Mode - using ThreadPoolExecutor...")
     
         levels = load_levels_from_file()
         if not levels:
             logging.info("No levels to check, skipping...")
-            return
-    
-        # Use the SAME proxy system as full scan
-        proxy_url = os.getenv("PROXY_LIST_URL")
-        if not proxy_url:
-            logging.error("PROXY_LIST_URL environment variable not set")
-            return
+            # If no levels, we should still update the message to reflect "no hits"
+            full_report_text = "💥 *LEVEL ALERTS* 💥\n\n❌ No levels got hit at this time."
+            # hits_found flag is not strictly needed here, but kept for clarity if logic changes
+            # hits_found = False 
+        else:
+            # Use the SAME proxy system as full scan
+            proxy_url = os.getenv("PROXY_LIST_URL")
+            if not proxy_url:
+                logging.error("PROXY_LIST_URL environment variable not set")
+                return
 
-        # Create the SAME proxy pool and clients as full scan
-        proxy_pool = ProxyPool(max_pool_size=25)
-        proxy_pool.populate_from_url(proxy_url)
-        proxy_pool.start_checker()
+            proxy_pool = ProxyPool(max_pool_size=25)
+            proxy_pool.populate_from_url(proxy_url)
+            proxy_pool.start_checker()
 
-        binance_client = BinanceClient(proxy_pool)
-        bybit_client = BybitClient(proxy_pool)
-    
-        # Use CONCURRENT level checking (Solution 1 only)
-        hits = check_level_hits_simple_concurrent(levels, binance_client, bybit_client)
-    
-        if hits:
-            logging.info(f"🚨 Found {len(hits)} level hits!")
+            binance_client = BinanceClient(proxy_pool)
+            bybit_client = BybitClient(proxy_pool)
+        
+            hits = check_level_hits_simple_concurrent(levels, binance_client, bybit_client)
+        
             # Filter out low_movement hits (not supported in alerts system)
             hits = [h for h in hits if h["signal_type"] in ("bullish", "bearish")]
-            alert_messages = create_alerts_telegram_report(hits)
-     
-            # Now it's just one message instead of multiple
-            msg = alert_messages[0]
-            stored_id = load_level_message_id()
+            
+            if hits:
+                logging.info(f"🚨 Found {len(hits)} level hits!")
+                alert_messages_list = create_alerts_telegram_report(hits)
+                full_report_text = "\n\n".join(alert_messages_list)
+            else:
+                logging.info("✅ No level hits detected.")
+                full_report_text = "💥 *LEVEL ALERTS* 💥\n\n❌ No levels got hit at this time."
 
-            try:
-                if stored_id:                          # edit the existing alert
+        # --- Advanced Multi-Message Update Logic (Edit Existing, Append New, Never Delete) ---
+        previous_message_ids = load_level_message_ids()
+        current_message_ids = [] # This will be the new list of IDs to save
+
+        # Split the full report text into chunks based on MAX_TG_CHARS
+        new_chunks_text = []
+        temp_chunk = ''
+        for line in full_report_text.splitlines(keepends=True):
+            if len(temp_chunk) + len(line) > MAX_TG_CHARS:
+                new_chunks_text.append(temp_chunk)
+                temp_chunk = ''
+            temp_chunk += line
+        if temp_chunk.strip():
+            new_chunks_text.append(temp_chunk)
+
+        # Iterate through new chunks and update/append messages
+        for i, chunk_text in enumerate(new_chunks_text):
+            if i < len(previous_message_ids):
+                # Attempt to edit an existing message
+                msg_id_to_edit = previous_message_ids[i]
+                try:
                     await bot.edit_message_text(
                         chat_id=int(TELEGRAM_CHAT_ID),
-                        message_id=stored_id,
-                        text=msg,
+                        message_id=msg_id_to_edit,
+                        text=chunk_text,
                         parse_mode='Markdown'
                     )
-                    logging.info("Level alert message UPDATED")
-                else:                                   # first alert of the day
-                    sent = await safe_send_markdown(bot, int(TELEGRAM_CHAT_ID), msg)
-                    if sent:
-                        save_level_message_id(sent.message_id)
-                    logging.info("Level alert message SENT and ID stored")
-                    
-            except Exception as e:                     # optional fallback
-                logging.warning(f"Edit failed: {e} — sending new alert")
-                sent = await safe_send_markdown(bot, int(TELEGRAM_CHAT_ID), msg)
-                save_level_message_id(sent.message_id)
+                    current_message_ids.append(msg_id_to_edit) # Keep the old ID
+                    logging.debug(f"Edited message ID: {msg_id_to_edit}")
+                except BadRequest as e:
+                    # This can happen if the message was manually deleted or is too old to edit.
+                    # Since we never delete, this is primarily for manual deletions.
+                    logging.warning(f"Could not edit message ID {msg_id_to_edit}: {e}. Sending new message instead.")
+                    # Fallback: send a new message if edit fails
+                    try:
+                        m = await bot.send_message(chat_id=int(TELEGRAM_CHAT_ID), text=chunk_text, parse_mode='Markdown')
+                        current_message_ids.append(m.message_id) # Add the new ID
+                        logging.info(f"Sent new message due to edit failure: {m.message_id}")
+                    except Exception as send_e:
+                        logging.error(f"Failed to send new message after edit failure: {send_e}")
+                except Exception as e:
+                    logging.error(f"Unexpected error editing message ID {msg_id_to_edit}: {e}")
+            else:
+                # Send new messages if there are more chunks than previous messages
+                try:
+                    m = await bot.send_message(chat_id=int(TELEGRAM_CHAT_ID), text=chunk_text, parse_mode='Markdown')
+                    current_message_ids.append(m.message_id)
+                    logging.info(f"Sent new message (report grew): {m.message_id}")
+                except Exception as e:
+                    logging.error(f"Failed to send new message: {e}")
+            
+            await asyncio.sleep(0.5) # Small delay to avoid hitting rate limits during edits/sends
 
-        else:
-            logging.info("✅ No level hits detected")
+        # IMPORTANT: We DO NOT delete excess messages here.
+        # If the report shrinks, the older messages will simply retain their last updated content.
+        # This fulfills the requirement to "not delete them if it gets updated until that day ends".
 
-    else:
-        # FULL SCAN MODE: Do complete pattern detection
-        # new day → start a fresh LEVEL ALERT thread
-        clear_level_message_id()
+        # Save the updated list of message IDs (including any new ones)
+        save_level_message_ids(current_message_ids)
+        logging.info(f"Level alert report updated. Now spans {len(current_message_ids)} messages.")
+
+    else: # full_scan mode
+        # When full_scan runs, it's a new day, so we clear the previous day's message IDs
+        # This ensures the new full_scan report starts fresh and doesn't try to edit old messages.
+        clear_level_message_ids()
         logging.info("🔍 Full scan mode - performing complete pattern detection...")
         
         proxy_url = os.getenv("PROXY_LIST_URL")
@@ -974,12 +1011,10 @@ async def main():
         bybit_perp_raw = set(bybit_client.get_perp_symbols())
         bybit_spot_raw = set(bybit_client.get_spot_symbols())
 
-        # Apply priority deduplication with USDT filtering
         binance_perp, binance_spot, bybit_perp, bybit_spot = apply_priority(
             binance_perp_raw, binance_spot_raw, bybit_perp_raw, bybit_spot_raw
         )
 
-        # Apply ignored symbols filter
         final_binance_perp = {s for s in binance_perp if s not in IGNORED_SYMBOLS}
         final_binance_spot = {s for s in binance_spot if s not in IGNORED_SYMBOLS}
         final_bybit_perp = {s for s in bybit_perp if s not in IGNORED_SYMBOLS}
@@ -998,17 +1033,15 @@ async def main():
                 try:
                     df = client.fetch_ohlcv(symbol, interval, limit=3, market=market)
                     
-                    # Existing reversal pattern check
                     equal_price, signal_type = check_equal_price_and_classify(df)
                     if equal_price and signal_type and \
                        not current_candle_touched_price(df, equal_price):
                         with lock:
                             results.append((
                                 exchange_name, symbol, market,
-                                interval, signal_type, equal_price   # keep tuple
+                                interval, signal_type, equal_price
                             ))
 
-                    # NEW: Check for low movement daily candle
                     if interval == "1d":
                         movement_percent = check_low_movement_daily_candle(df, threshold_percent=2.5)
                         if movement_percent is not None:
@@ -1020,7 +1053,6 @@ async def main():
                                 "interval": interval,
                                 "movement_percent": movement_percent
                                 })
-
 
                 except Exception as e:
                     logging.warning(f"Failed {exchange_name} {symbol} {market} {interval}: {e}")
@@ -1039,14 +1071,21 @@ async def main():
         # Send normal scanning results
         messages = create_beautiful_telegram_report(results, low_movement_results)
         
-        for msg in messages:
-            try:
-                await safe_send_markdown(bot, int(TELEGRAM_CHAT_ID), msg)
-                await asyncio.sleep(1)  # Rate limiting
-            except Exception as e:
-                logging.error(f"Failed to send Telegram message: {e}")
+        # For full_scan, we send all messages and save their IDs for subsequent price_check runs
+        # This is the "fresh start" for the day.
+        full_scan_report_text = "\n\n".join(messages) # Consolidate all parts of the report
+        
+        # Use safe_send_markdown to send the initial report, which will handle chunking
+        initial_message_ids = await safe_send_markdown(bot, int(TELEGRAM_CHAT_ID), full_scan_report_text)
+        
+        # Save these IDs as the base for the day's updates
+        if initial_message_ids:
+            save_level_message_ids(initial_message_ids)
+            logging.info(f"Full scan report sent in {len(initial_message_ids)} messages. IDs stored for daily updates.")
+        else:
+            logging.warning("No messages were sent for the full scan report.")
 
-        # Save current results for next run
+        # Save current results for next run (this is for the levels themselves, not the message IDs)
         save_levels_to_file(results)
         logging.info("Saved current levels for next run")
 
