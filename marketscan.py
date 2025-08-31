@@ -77,27 +77,27 @@ def load_levels_from_file(filename="detected_levels.json"):
 # --- Message Editing Functions ---
 LEVEL_MSG_FILE = "level_alert_message.json"
 
-def save_level_message_ids(message_ids: list[int]): # Changed to list[int]
+def save_level_message_ids(message_ids: list[int]):
     with open(LEVEL_MSG_FILE, "w") as f:
         json.dump(
-            {"message_ids": message_ids, # Changed key to message_ids
+            {"message_ids": message_ids,
              "timestamp": datetime.now(timezone.utc).isoformat()},
             f
         )
 
-def load_level_message_ids() -> list[int]: # Changed return type to list[int]
+def load_level_message_ids() -> list[int]:
     """Load previously stored Telegram message IDs for level alerts."""
     if not os.path.exists(LEVEL_MSG_FILE):
-        return [] # Return empty list if file doesn't exist
+        return []
     try:
         with open(LEVEL_MSG_FILE) as f:
             data = json.load(f)
-            return data.get("message_ids", []) # Get list, default to empty
+            return data.get("message_ids", [])
     except Exception:
         logging.error("Failed to load previous level message IDs.", exc_info=True)
         return []
 
-def clear_level_message_ids(): # Renamed for consistency
+def clear_level_message_ids():
     """Clear the stored Telegram message IDs for level alerts."""
     if os.path.exists(LEVEL_MSG_FILE):
         os.remove(LEVEL_MSG_FILE)
@@ -435,12 +435,6 @@ class ProxyPool:
             self.proxy_cycle = itertools.cycle(self.proxies)
             logging.info(f"Proxy pool populated to max size: {len(self.proxies)}/{self.max_pool_size}")
 
-    def get_new_proxies(self, count: int) -> list:
-        backup_url = "https://raw.githubusercontent.com/ErcinDedeoglu/proxies/main/proxies/https.txt"
-        new_proxies = fetch_proxies_from_url(backup_url)
-        working = test_proxies_concurrently(new_proxies, max_working=count)
-        return working
-
     def stop(self):
         self._stop_event.set()
 
@@ -742,12 +736,10 @@ def create_beautiful_telegram_report(results, low_movement_results=None):
     """
     Build a beautiful Telegram report for reversal signals,
     plus a separate section for Low Movement Daily Candles.
+    This function now returns a list of strings, where each string is a distinct section.
     """
     if low_movement_results is None:
         low_movement_results = []
-
-    # This function now returns a list of strings, which will be joined later
-    # for the full_scan report, or used as the base for price_check updates.
 
     # --- Group reversal signals by TF / exchange ---
     timeframes = {}
@@ -764,9 +756,9 @@ def create_beautiful_telegram_report(results, low_movement_results=None):
     utc_plus_3 = timezone(timedelta(hours=3))
     timestamp = UTC_NOW_RUN.astimezone(utc_plus_3).strftime("%Y-%m-%d %H:%M:%S UTC+3")
 
-    report_parts = [] # Collect parts of the report here
+    report_sections = [] # Collect parts of the report here
 
-    # --- Summary ---
+    # --- Reversal Signals Summary ---
     total_reversal_signals = len(results)
     binance_count = len([r for r in results if r[0] == "Binance"])
     bybit_count = len([r for r in results if r[0] == "Bybit"])
@@ -775,9 +767,9 @@ def create_beautiful_telegram_report(results, low_movement_results=None):
     summary += f"✅ Total Reversal Signals: {total_reversal_signals}\n\n"
     summary += f"*Binance*: {binance_count} | *Bybit*: {bybit_count}\n\n"
     summary += f"🕒 {timestamp}"
-    report_parts.append(summary)
+    report_sections.append(summary)
 
-    # --- Each timeframe ---
+    # --- Each timeframe for Reversal Signals ---
     timeframe_order = ["1M", "1w", "1d"]
 
     for timeframe in timeframe_order:
@@ -810,7 +802,7 @@ def create_beautiful_telegram_report(results, low_movement_results=None):
                 current_tf_section += "\n"
 
         current_tf_section += "——————————————————\n\n"
-        report_parts.append(current_tf_section.strip())
+        report_sections.append(current_tf_section.strip())
 
     # --- Low Movement Section ---
     if low_movement_results:
@@ -832,11 +824,11 @@ def create_beautiful_telegram_report(results, low_movement_results=None):
             low_msg += "\n"
 
         low_msg += "——————————————————\n\n"
-        report_parts.append(low_msg.strip())
+        report_sections.append(low_msg.strip())
 
-    return report_parts
+    return report_sections
 
-async def safe_send_markdown(bot: Bot, chat_id: int, text: str) -> list[int]: # Return list of IDs
+async def safe_send_markdown(bot: Bot, chat_id: int, text: str) -> list[int]:
     """
     Send Markdown text in <=4 000-character blocks.
     Returns a list of message_ids of all sent messages.
@@ -897,9 +889,7 @@ async def main():
         if not levels:
             logging.info("No levels to check, skipping...")
             # If no levels, we should still update the message to reflect "no hits"
-            full_report_text = "💥 *LEVEL ALERTS* 💥\n\n❌ No levels got hit at this time."
-            # hits_found flag is not strictly needed here, but kept for clarity if logic changes
-            # hits_found = False 
+            level_alerts_report_text = "💥 *LEVEL ALERTS* 💥\n\n❌ No levels got hit at this time."
         else:
             # Use the SAME proxy system as full scan
             proxy_url = os.getenv("PROXY_LIST_URL")
@@ -921,20 +911,20 @@ async def main():
             
             if hits:
                 logging.info(f"🚨 Found {len(hits)} level hits!")
-                alert_messages_list = create_alerts_telegram_report(hits)
-                full_report_text = "\n\n".join(alert_messages_list)
+                # create_alerts_telegram_report returns a list with one string for LEVEL ALERTS
+                level_alerts_report_text = create_alerts_telegram_report(hits)[0] 
             else:
                 logging.info("✅ No level hits detected.")
-                full_report_text = "💥 *LEVEL ALERTS* 💥\n\n❌ No levels got hit at this time."
+                level_alerts_report_text = "💥 *LEVEL ALERTS* 💥\n\n❌ No levels got hit at this time."
 
-        # --- Advanced Multi-Message Update Logic (Edit Existing, Append New, Never Delete) ---
+        # --- Advanced Multi-Message Update Logic for LEVEL ALERTS ---
         previous_message_ids = load_level_message_ids()
         current_message_ids = [] # This will be the new list of IDs to save
 
-        # Split the full report text into chunks based on MAX_TG_CHARS
+        # Split the level_alerts_report_text into chunks based on MAX_TG_CHARS
         new_chunks_text = []
         temp_chunk = ''
-        for line in full_report_text.splitlines(keepends=True):
+        for line in level_alerts_report_text.splitlines(keepends=True):
             if len(temp_chunk) + len(line) > MAX_TG_CHARS:
                 new_chunks_text.append(temp_chunk)
                 temp_chunk = ''
@@ -958,7 +948,6 @@ async def main():
                     logging.debug(f"Edited message ID: {msg_id_to_edit}")
                 except BadRequest as e:
                     # This can happen if the message was manually deleted or is too old to edit.
-                    # Since we never delete, this is primarily for manual deletions.
                     logging.warning(f"Could not edit message ID {msg_id_to_edit}: {e}. Sending new message instead.")
                     # Fallback: send a new message if edit fails
                     try:
@@ -1068,22 +1057,29 @@ async def main():
             for _ in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Scanning symbols"):
                 pass
 
-        # Send normal scanning results
-        messages = create_beautiful_telegram_report(results, low_movement_results)
+        # --- Send Full Scan Reports (Reversal Scanner & Low Movement) ---
+        # create_beautiful_telegram_report returns a list of sections.
+        # We send each section as a separate message (chunked by safe_send_markdown if needed).
+        full_scan_report_sections = create_beautiful_telegram_report(results, low_movement_results)
         
-        # For full_scan, we send all messages and save their IDs for subsequent price_check runs
-        # This is the "fresh start" for the day.
-        full_scan_report_text = "\n\n".join(messages) # Consolidate all parts of the report
+        for section_text in full_scan_report_sections:
+            try:
+                # Send each section as a separate message. safe_send_markdown handles chunking.
+                await safe_send_markdown(bot, int(TELEGRAM_CHAT_ID), section_text)
+                await asyncio.sleep(1) # Small delay between sending sections
+            except Exception as e:
+                logging.error(f"Failed to send full scan report section: {e}")
+
+        # --- Send Initial Level Alerts Message (for daily updates) ---
+        # This message will be updated by price_check runs.
+        initial_level_alerts_text = "💥 *LEVEL ALERTS* 💥\n\n❌ No levels got hit at this time."
+        initial_level_alerts_message_ids = await safe_send_markdown(bot, int(TELEGRAM_CHAT_ID), initial_level_alerts_text)
         
-        # Use safe_send_markdown to send the initial report, which will handle chunking
-        initial_message_ids = await safe_send_markdown(bot, int(TELEGRAM_CHAT_ID), full_scan_report_text)
-        
-        # Save these IDs as the base for the day's updates
-        if initial_message_ids:
-            save_level_message_ids(initial_message_ids)
-            logging.info(f"Full scan report sent in {len(initial_message_ids)} messages. IDs stored for daily updates.")
+        if initial_level_alerts_message_ids:
+            save_level_message_ids(initial_level_alerts_message_ids)
+            logging.info(f"Initial Level Alerts message sent in {len(initial_level_alerts_message_ids)} messages. IDs stored for daily updates.")
         else:
-            logging.warning("No messages were sent for the full scan report.")
+            logging.warning("No initial Level Alerts message was sent.")
 
         # Save current results for next run (this is for the levels themselves, not the message IDs)
         save_levels_to_file(results)
