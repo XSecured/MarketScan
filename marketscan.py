@@ -5,50 +5,61 @@ import os
 import json
 import random
 import time
+import sys
 from datetime import datetime, timezone, timedelta
-from typing import List, Dict, Set, Optional, Tuple, NamedTuple, Any
-from dataclasses import dataclass
+from typing import List, Dict, Set, Optional, Tuple, NamedTuple, Any, Union
+from dataclasses import dataclass, asdict, field
 from enum import Enum
-
-# Try to import telegram, gracefully fail if not installed (though context implies it is)
-try:
-    from telegram import Bot
-    from telegram.error import BadRequest
-except ImportError:
-    logging.error("python-telegram-bot is missing. Please install it.")
-    Bot = None
-    BadRequest = Exception
+from pathlib import Path
 
 # -----------------------------------------------------------------------------
-# Configuration & Constants
+# 1. System Configuration & Constants
 # -----------------------------------------------------------------------------
 
-LOG_FORMAT = '%(asctime)s | %(levelname)s | %(message)s'
-logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
+# Configure high-performance logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)s | %(name)s | %(message)s',
+    datefmt='%H:%M:%S'
+)
+logger = logging.getLogger("MarketScan")
 
-# Tuning Parameters for 2025 Performance
-CONCURRENCY_LIMIT = 100      # Simultaneous connections (safe for async)
-HTTP_TIMEOUT = 10            # Seconds
-MAX_RETRIES = 3
-RETRY_DELAY = 1.0
-MAX_TG_CHARS = 4000
+# Try to use uvloop for maximum performance on Linux (GitHub Actions)
+if sys.platform != 'win32':
+    try:
+        import uvloop
+        asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+        logger.info("🚀 High-Performance uvloop active")
+    except ImportError:
+        pass
 
-IGNORED_SYMBOLS = {
-    "USDPUSDT", "USD1USDT", "TUSDUSDT", "AEURUSDT", "USDCUSDT",
-    "ZKJUSDT", "FDUSDUSDT", "XUSDUSDT", "EURUSDT", "EURIUSDT",
-    "USDYUSDT", "USDRUSDT", "ETH3LUSDT", "ETHUSDT-27MAR26",
-    "ETHUSDT-27JUN25", "ETHUSDT-26DEC25", "ETHUSDT-26SEP25"
-}
+class Config:
+    # Infrastructure
+    CONCURRENCY_LIMIT = 200      # Higher concurrency for async
+    HTTP_TIMEOUT = 8             # Fast fail
+    MAX_RETRIES = 2
+    PROXY_CHECK_URL = "https://api.binance.com/api/v3/time" # Lightweight check
 
-LEVELS_FILE = "detected_levels.json"
-MSG_ID_FILE = "level_alert_message.json"
+    # File Paths
+    LEVELS_FILE = Path("detected_levels.json")
+    HITS_FILE = Path("daily_hits.json")     # NEW: Persist hits throughout the day
+    MSG_ID_FILE = Path("msg_ids.json")
+    
+    # Logic
+    LOW_MOVEMENT_THRESHOLD = 1.0 # Exact requirement
+    IGNORED_SYMBOLS = {
+        "USDPUSDT", "USD1USDT", "TUSDUSDT", "AEURUSDT", "USDCUSDT",
+        "ZKJUSDT", "FDUSDUSDT", "XUSDUSDT", "EURUSDT", "EURIUSDT",
+        "USDYUSDT", "USDRUSDT", "ETH3LUSDT", "ETHUSDT-27MAR26",
+        "ETHUSDT-27JUN25", "ETHUSDT-26DEC25", "ETHUSDT-26SEP25"
+    }
 
 # -----------------------------------------------------------------------------
-# Data Structures (Lightweight Replacements for Pandas)
+# 2. Data Models (Lightweight & Typed)
 # -----------------------------------------------------------------------------
 
 class Candle(NamedTuple):
-    """Lightweight structure to replace heavy Pandas DataFrames"""
+    """Memory-efficient candle structure"""
     open: float
     high: float
     low: float
@@ -56,688 +67,734 @@ class Candle(NamedTuple):
     volume: float
 
 @dataclass
+class MarketLevel:
+    exchange: str
+    symbol: str
+    market: str
+    interval: str
+    signal_type: str
+    price: float
+    timestamp: str
+
+@dataclass
 class LevelHit:
+    """Represents a confirmed hit of a level"""
+    id: str # Unique ID (exchange_symbol_interval_price) to prevent duplicates
     exchange: str
     symbol: str
     market: str
     interval: str
     signal_type: str
     level_price: float
-    current_price: float
-    current_low: float
-    current_high: float
-    original_timestamp: str
+    hit_price: float
+    hit_time: str
 
 @dataclass
-class LowMovementResult:
+class LowVolResult:
     exchange: str
     symbol: str
     market: str
-    interval: str
     movement_percent: float
 
 # -----------------------------------------------------------------------------
-# Core Logic Helpers
+# 3. High-Performance Networking & Proxy System
 # -----------------------------------------------------------------------------
 
-def floats_are_equal(a: float, b: float, rel_tol: float = 0.003) -> bool:
-    """Return True if a and b differ by less than 0.3%"""
-    if a == 0 or b == 0: return False
-    return abs(a - b) <= rel_tol * ((a + b) / 2.0)
-
-def normalize_symbol(symbol: str) -> str:
-    """Normalize symbol to BASE/QUOTE format."""
-    s = symbol.upper()
-    if ':' in s: s = s.split(':')[0]
-    if '/' in s: return s
-    # Basic heuristic for USDT pairs
-    if s.endswith('USDT'): return f"{s[:-4]}/USDT"
-    return s
-
-# -----------------------------------------------------------------------------
-# Async Proxy Manager
-# -----------------------------------------------------------------------------
-
-class AsyncProxyManager:
-    def __init__(self, url: Optional[str]):
-        self.url = url
+class SmartProxyManager:
+    """
+    Manages proxies with a 'Warmup' phase.
+    Only allows 'Verified' proxies to be used for scanning.
+    """
+    def __init__(self, proxy_url: str):
+        self.proxy_url = proxy_url
         self.proxies: List[str] = []
-        self.iterator = None
+        self.verified_proxies: List[str] = []
+        self._bad_proxies: Set[str] = set()
         self.lock = asyncio.Lock()
-        self.bad_proxies: Set[str] = set()
 
-    async def refresh_proxies(self):
-        if not self.url:
-            return
-        
-        logging.info("Fetching proxies...")
+    async def load_and_verify(self):
+        """Fetches proxies and tests them concurrently before the main scan."""
+        logger.info("🌐 Fetching proxy list...")
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(self.url, timeout=10) as resp:
-                    if resp.status == 200:
-                        text = await resp.text()
-                        candidates = [
-                            p.strip() if "://" in p.strip() else f"http://{p.strip()}"
-                            for p in text.splitlines() if p.strip()
-                        ]
-                        # Quick self-test (optional, skipping for speed to rely on fail-fast)
-                        self.proxies = candidates
-                        self.iterator = itertools.cycle(self.proxies)
-                        self.bad_proxies.clear()
-                        logging.info(f"Loaded {len(self.proxies)} proxies.")
+                async with session.get(self.proxy_url, timeout=10) as resp:
+                    if resp.status != 200:
+                        raise Exception(f"Proxy list returned {resp.status}")
+                    text = await resp.text()
+                    raw_proxies = [
+                        p.strip() if "://" in p.strip() else f"http://{p.strip()}"
+                        for p in text.splitlines() if p.strip()
+                    ]
         except Exception as e:
-            logging.error(f"Failed to fetch proxies: {e}")
+            logger.error(f"Failed to load proxies: {e}")
+            return
 
-    def get_proxy(self) -> Optional[str]:
-        if not self.proxies:
+        logger.info(f"🧪 Verifying {len(raw_proxies)} proxies (Warmup Phase)...")
+        
+        # Verify proxies concurrently
+        sem = asyncio.Semaphore(100) # Fast verification
+        valid = []
+
+        async def verify(p):
+            async with sem:
+                try:
+                    # We use a very short timeout for verification. 
+                    # If it's not fast now, we don't want it later.
+                    async with aiohttp.ClientSession() as s:
+                        async with s.get(Config.PROXY_CHECK_URL, proxy=p, timeout=4) as r:
+                            if r.status == 200:
+                                valid.append(p)
+                except:
+                    pass
+
+        await asyncio.gather(*(verify(p) for p in raw_proxies))
+        
+        self.verified_proxies = valid
+        if not self.verified_proxies:
+            logger.warning("⚠️ NO VALID PROXIES FOUND! Falling back to raw list (High Risk)")
+            self.verified_proxies = raw_proxies
+        else:
+            logger.info(f"✅ Active Proxy Pool: {len(self.verified_proxies)} high-speed proxies")
+
+    def get_proxy(self) -> str:
+        """Returns a random verified proxy to spread load."""
+        if not self.verified_proxies:
             return None
-        # Simple round-robin with skip logic
-        for _ in range(len(self.proxies)):
-            p = next(self.iterator)
-            if p not in self.bad_proxies:
-                return p
-        return None
+        # Simple random choice is better than round-robin for stateless async 
+        # because it prevents 'convoys' of requests hitting the same bad proxy
+        return random.choice(self.verified_proxies)
 
     def mark_bad(self, proxy: str):
-        if proxy:
-            self.bad_proxies.add(proxy)
+        # We don't remove immediately to avoid shrinking pool too fast in temporary glitches,
+        # but in a long runner we would. For one-shot scripts, this is fine.
+        pass
 
 # -----------------------------------------------------------------------------
-# Abstracted Exchange Client (Async)
+# 4. Exchange Clients (Async & Persistent Session)
 # -----------------------------------------------------------------------------
 
 class ExchangeClient:
-    def __init__(self, name: str, proxy_mgr: AsyncProxyManager):
+    def __init__(self, name: str, proxy_mgr: SmartProxyManager):
         self.name = name
         self.proxy_mgr = proxy_mgr
         self.session: Optional[aiohttp.ClientSession] = None
+        self.sem = asyncio.Semaphore(Config.CONCURRENCY_LIMIT)
 
     async def __aenter__(self):
-        # We do not set a base_url here because different endpoints use different domains
-        self.session = aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=HTTP_TIMEOUT),
-            connector=aiohttp.TCPConnector(limit=0, ssl=False) # limit=0, we control via Semaphore
-        )
+        # TCPConnector with limit=0 means connection pool is unlimited (controlled by Semaphore)
+        # ttl_dns_cache forces DNS refresh occasionally
+        conn = aiohttp.TCPConnector(limit=0, ttl_dns_cache=300, ssl=False)
+        self.session = aiohttp.ClientSession(connector=conn)
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
         if self.session:
             await self.session.close()
 
-    async def _get(self, url: str, params: dict) -> Any:
-        attempt = 0
-        while attempt < MAX_RETRIES:
+    async def _request(self, url: str, params: dict) -> Any:
+        """Reliable request wrapper with retries and proxy rotation."""
+        for attempt in range(Config.MAX_RETRIES):
             proxy = self.proxy_mgr.get_proxy()
             try:
-                async with self.session.get(url, params=params, proxy=proxy) as resp:
+                # Actual request
+                async with self.session.get(
+                    url, params=params, proxy=proxy, timeout=Config.HTTP_TIMEOUT
+                ) as resp:
                     if resp.status == 200:
                         return await resp.json()
-                    elif resp.status in [418, 429]: # Rate limited
-                        await asyncio.sleep(RETRY_DELAY * (attempt + 1))
-                    else:
-                        resp.raise_for_status()
-            except Exception as e:
-                # logging.debug(f"{self.name} req failed: {e}") # Verbose
-                if proxy:
-                    self.proxy_mgr.mark_bad(proxy)
+                    elif resp.status == 429: # Rate limit
+                        await asyncio.sleep(1 + attempt)
+                    elif resp.status >= 500: # Server error
+                        await asyncio.sleep(0.5)
+            except Exception:
+                # Silent fail on attempt 1/2, log only if totally failed
+                pass
             
-            attempt += 1
-            await asyncio.sleep(0.2) # Backoff
-        raise Exception(f"Max retries reached for {url}")
+            # Backoff before retry
+            await asyncio.sleep(0.2)
+        
+        return None # Failed after retries
 
-    async def fetch_candles(self, symbol: str, interval: str, market: str) -> List[Candle]:
-        raise NotImplementedError
-
-    async def get_symbols(self) -> Tuple[Set[str], Set[str]]:
-        """Returns (perp_symbols, spot_symbols)"""
-        raise NotImplementedError
-
-class BinanceAsync(ExchangeClient):
-    def __init__(self, proxy_mgr):
-        super().__init__("Binance", proxy_mgr)
+class BinanceClient(ExchangeClient):
+    def __init__(self, proxy_mgr): super().__init__("Binance", proxy_mgr)
 
     async def get_symbols(self) -> Tuple[Set[str], Set[str]]:
         perps, spots = set(), set()
         
-        # Fetch Perps
-        try:
-            data = await self._get('https://fapi.binance.com/fapi/v1/exchangeInfo', {})
-            perps = {s['symbol'] for s in data['symbols'] 
-                     if s['contractType'] == 'PERPETUAL' and s['status'] == 'TRADING' and s['quoteAsset'] == 'USDT'}
-        except Exception as e:
-            logging.error(f"Binance Perp Info failed: {e}")
+        # Parallel fetch of info
+        t1 = self._request('https://fapi.binance.com/fapi/v1/exchangeInfo', {})
+        t2 = self._request('https://api.binance.com/api/v3/exchangeInfo', {})
+        r1, r2 = await asyncio.gather(t1, t2)
 
-        # Fetch Spots
-        try:
-            data = await self._get('https://api.binance.com/api/v3/exchangeInfo', {})
-            spots = {s['symbol'] for s in data['symbols'] 
+        if r1:
+            perps = {s['symbol'] for s in r1['symbols'] 
+                     if s['contractType'] == 'PERPETUAL' and s['status'] == 'TRADING' and s['quoteAsset'] == 'USDT'}
+        if r2:
+            spots = {s['symbol'] for s in r2['symbols'] 
                      if s['status'] == 'TRADING' and s['quoteAsset'] == 'USDT'}
-        except Exception as e:
-            logging.error(f"Binance Spot Info failed: {e}")
-            
         return perps, spots
 
     async def fetch_candles(self, symbol: str, interval: str, market: str) -> List[Candle]:
         base = 'https://api.binance.com/api/v3/klines' if market == "spot" else 'https://fapi.binance.com/fapi/v1/klines'
-        # Limit 3 is enough for our logic (current, last closed, 2nd last closed)
-        data = await self._get(base, {'symbol': symbol, 'interval': interval, 'limit': 4})
+        # Limit 4 gives us: [Newest(Live), LastClosed, 2ndLastClosed, 3rdLastClosed]
+        data = await self._request(base, {'symbol': symbol, 'interval': interval, 'limit': 4})
         
-        # Parse into Candle objects (newest last in raw response usually, but we standardize)
-        # Binance returns [open_time, open, high, low, close, vol, ...]
-        # We want newest at index 0 for consistency with legacy logic logic
-        candles = []
-        for k in data:
-            candles.append(Candle(
-                open=float(k[1]), high=float(k[2]), low=float(k[3]), close=float(k[4]), volume=float(k[5])
-            ))
-        return list(reversed(candles)) # Return [Newest, LastClosed, 2ndLastClosed, ...]
+        if not data: return []
+        
+        # Optimization: List comprehension is faster than loops
+        # Binance: [Time, Open, High, Low, Close, Vol, ...]
+        # We assume data is sorted Oldest -> Newest. We reverse it to get Newest -> Oldest
+        return [
+            Candle(float(x[1]), float(x[2]), float(x[3]), float(x[4]), float(x[5]))
+            for x in reversed(data)
+        ]
 
-class BybitAsync(ExchangeClient):
-    def __init__(self, proxy_mgr):
-        super().__init__("Bybit", proxy_mgr)
+class BybitClient(ExchangeClient):
+    def __init__(self, proxy_mgr): super().__init__("Bybit", proxy_mgr)
 
     async def get_symbols(self) -> Tuple[Set[str], Set[str]]:
         perps, spots = set(), set()
-        try:
-            data = await self._get('https://api.bybit.com/v5/market/instruments-info', {'category': 'linear'})
-            perps = {s['symbol'] for s in data['result']['list'] if s['status'] == 'Trading' and s['quoteCoin'] == 'USDT'}
-        except Exception as e:
-            logging.error(f"Bybit Perp Info failed: {e}")
+        
+        t1 = self._request('https://api.bybit.com/v5/market/instruments-info', {'category': 'linear'})
+        t2 = self._request('https://api.bybit.com/v5/market/instruments-info', {'category': 'spot'})
+        r1, r2 = await asyncio.gather(t1, t2)
 
-        try:
-            data = await self._get('https://api.bybit.com/v5/market/instruments-info', {'category': 'spot'})
-            spots = {s['symbol'] for s in data['result']['list'] if s['status'] == 'Trading' and s['quoteCoin'] == 'USDT'}
-        except Exception as e:
-            logging.error(f"Bybit Spot Info failed: {e}")
-            
+        if r1 and 'result' in r1:
+            perps = {s['symbol'] for s in r1['result']['list'] if s['status'] == 'Trading' and s['quoteCoin'] == 'USDT'}
+        if r2 and 'result' in r2:
+            spots = {s['symbol'] for s in r2['result']['list'] if s['status'] == 'Trading' and s['quoteCoin'] == 'USDT'}
         return perps, spots
 
     async def fetch_candles(self, symbol: str, interval: str, market: str) -> List[Candle]:
-        category = 'linear' if market == 'perp' else 'spot'
-        bybit_int = {"1M": "M", "1w": "W", "1d": "D"}[interval]
+        cat = 'linear' if market == 'perp' else 'spot'
+        b_int = {"1M": "M", "1w": "W", "1d": "D"}[interval]
         
-        data = await self._get('https://api.bybit.com/v5/market/kline', 
-                               {'category': category, 'symbol': symbol, 'interval': bybit_int, 'limit': 4})
+        data = await self._request('https://api.bybit.com/v5/market/kline', 
+                                   {'category': cat, 'symbol': symbol, 'interval': b_int, 'limit': 4})
         
-        # Bybit V5 returns [startTime, open, high, low, close, volume, turnover]
-        # Bybit returns Newest First natively.
-        candles = []
-        for k in data['result']['list']:
-            candles.append(Candle(
-                open=float(k[1]), high=float(k[2]), low=float(k[3]), close=float(k[4]), volume=float(k[5])
-            ))
-        return candles # Already [Newest, LastClosed, ...]
+        if not data or 'result' not in data or 'list' not in data['result']: return []
+        
+        # Bybit V5 returns Newest -> Oldest natively.
+        # Format: [Time, Open, High, Low, Close, Vol, ...]
+        return [
+            Candle(float(x[1]), float(x[2]), float(x[3]), float(x[4]), float(x[5]))
+            for x in data['result']['list']
+        ]
 
 # -----------------------------------------------------------------------------
-# Business Logic (Pure Functions)
+# 5. Core Analysis Logic (Pure Functions)
 # -----------------------------------------------------------------------------
 
-def analyze_candles(candles: List[Candle]) -> Tuple[Optional[float], Optional[str]]:
+def detect_reversal_pattern(candles: List[Candle]) -> Tuple[Optional[float], Optional[str]]:
     """
-    Logic:
-    idx 0: Current (Live)
-    idx 1: Last Closed
-    idx 2: 2nd Last Closed
+    Checks if 2nd Last Close == 1st Last Open.
+    Candles index: 0=Live, 1=LastClosed, 2=2ndLastClosed
+    """
+    if len(candles) < 3: return None, None
     
-    Check if idx 2 Close == idx 1 Open
-    """
-    if len(candles) < 3:
+    last = candles[1]
+    prev = candles[2]
+    
+    # 0.3% Tolerance check
+    avg_price = (prev.close + last.open) / 2.0
+    if avg_price == 0: return None, None
+    if abs(prev.close - last.open) > (0.003 * avg_price):
         return None, None
+        
+    price = prev.close
     
-    second_last = candles[2]
-    last_closed = candles[1]
+    # Colors
+    prev_red = prev.close < prev.open
+    prev_green = prev.close > prev.open
+    last_red = last.close < last.open
+    last_green = last.close > last.open
     
-    # Determine colors
-    second_is_red = second_last.close < second_last.open
-    second_is_green = second_last.close > second_last.open
-    last_is_green = last_closed.close > last_closed.open
-    last_is_red = last_closed.close < last_closed.open
-    
-    # Check equality: 2nd Close vs 1st Open
-    if floats_are_equal(second_last.close, last_closed.open):
-        price = second_last.close
-        # Bullish Reversal: Red -> Green
-        if second_is_red and last_is_green:
-            return price, "bullish"
-        # Bearish Reversal: Green -> Red
-        elif second_is_green and last_is_red:
-            return price, "bearish"
-            
+    if prev_red and last_green:
+        return price, "bullish"
+    if prev_green and last_red:
+        return price, "bearish"
+        
     return None, None
 
-def analyze_low_movement(candles: List[Candle]) -> Optional[float]:
-    """Check daily candle movement < 1.0% (or 2.5% in main)"""
-    if len(candles) < 2:
-        return None
-    last_closed = candles[1]
-    if last_closed.open == 0: return None
+def detect_low_volatility(candles: List[Candle]) -> Optional[float]:
+    """Check if last closed candle moved < 1.0%"""
+    if len(candles) < 2: return None
+    c = candles[1] # Last closed
+    if c.open == 0: return None
     
-    movement = abs((last_closed.close - last_closed.open) / last_closed.open) * 100
-    return movement
+    move = abs((c.close - c.open) / c.open) * 100
+    if move < Config.LOW_MOVEMENT_THRESHOLD:
+        return move
+    return None
 
-def check_current_touch(candles: List[Candle], price: float) -> bool:
-    if not candles: return False
+def check_level_hit(candles: List[Candle], level_price: float) -> Tuple[bool, float]:
+    """Checks if CURRENT (Live) candle touched the price."""
+    if not candles: return False, 0.0
     curr = candles[0]
-    return curr.low <= price <= curr.high
+    if curr.low <= level_price <= curr.high:
+        return True, curr.close
+    return False, 0.0
 
 # -----------------------------------------------------------------------------
-# Telegram Logic
+# 6. Persistence & State Management
 # -----------------------------------------------------------------------------
 
-class TelegramManager:
-    def __init__(self, token: str, chat_id: str):
-        self.bot = Bot(token=token)
-        self.chat_id = chat_id
+class StateManager:
+    @staticmethod
+    def save_levels(levels: List[MarketLevel]):
+        data = {
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+            "levels": {
+                f"{l.exchange}_{l.symbol}_{l.market}_{l.interval}": asdict(l)
+                for l in levels
+            }
+        }
+        with open(Config.LEVELS_FILE, 'w') as f:
+            json.dump(data, f, indent=2)
 
-    async def send_chunks(self, text: str) -> List[int]:
-        """Sends text, splitting it if necessary. Returns list of Msg IDs."""
-        ids = []
-        if not text.strip(): return ids
+    @staticmethod
+    def load_levels() -> List[MarketLevel]:
+        if not Config.LEVELS_FILE.exists(): return []
+        try:
+            with open(Config.LEVELS_FILE, 'r') as f:
+                data = json.load(f)
+                return [MarketLevel(**v) for v in data.get("levels", {}).values()]
+        except Exception as e:
+            logger.error(f"Levels load error: {e}")
+            return []
 
-        # Split text respecting Markdown safety
-        chunks = []
+    @staticmethod
+    def load_daily_hits() -> List[LevelHit]:
+        """Loads hits that already occurred today."""
+        if not Config.HITS_FILE.exists(): return []
+        try:
+            with open(Config.HITS_FILE, 'r') as f:
+                data = json.load(f)
+                # Reset if file is from a previous day (optional, but good safety)
+                # Here we assume external logic or just appending. 
+                # Let's check the first hit's timestamp if it exists.
+                hits = [LevelHit(**h) for h in data]
+                if hits:
+                    last_hit = datetime.fromisoformat(hits[0].hit_time)
+                    if datetime.now(timezone.utc).date() > last_hit.date():
+                        logger.info("Hits file is from yesterday. Resetting.")
+                        return []
+                return hits
+        except:
+            return []
+
+    @staticmethod
+    def save_daily_hits(hits: List[LevelHit]):
+        # Deduplicate by ID before saving
+        unique = {h.id: h for h in hits}.values()
+        with open(Config.HITS_FILE, 'w') as f:
+            json.dump([asdict(h) for h in unique], f, indent=2)
+
+    @staticmethod
+    def load_msg_ids() -> List[int]:
+        if not Config.MSG_ID_FILE.exists(): return []
+        try:
+            with open(Config.MSG_ID_FILE) as f:
+                return json.load(f).get("ids", [])
+        except: return []
+
+    @staticmethod
+    def save_msg_ids(ids: List[int]):
+        with open(Config.MSG_ID_FILE, 'w') as f:
+            json.dump({"ids": ids, "updated": datetime.now(timezone.utc).isoformat()}, f)
+
+# -----------------------------------------------------------------------------
+# 7. Telegram Reporter (Smart Editing)
+# -----------------------------------------------------------------------------
+
+class TelegramBot:
+    def __init__(self):
+        self.token = os.getenv("TELEGRAM_BOT_TOKEN")
+        self.chat_id = os.getenv("TELEGRAM_CHAT_ID")
+        self.enabled = bool(self.token and self.chat_id)
+        if self.enabled:
+            # We import here to avoid crash if not installed
+            from telegram import Bot
+            self.bot = Bot(token=self.token)
+
+    async def send_report(self, text_sections: List[str], message_ids_to_edit: List[int] = None) -> List[int]:
+        if not self.enabled: return []
+        from telegram.error import BadRequest
+
+        # 1. Flatten sections into 4096-char chunks
+        final_chunks = []
         current_chunk = ""
-        for line in text.splitlines(keepends=True):
-            if len(current_chunk) + len(line) > MAX_TG_CHARS:
-                chunks.append(current_chunk)
-                current_chunk = ""
-            current_chunk += line
-        if current_chunk: chunks.append(current_chunk)
-
-        for chunk in chunks:
-            try:
-                msg = await self.bot.send_message(chat_id=self.chat_id, text=chunk, parse_mode='Markdown')
-                ids.append(msg.message_id)
-                await asyncio.sleep(0.3) # Avoid TG rate limits
-            except Exception as e:
-                logging.error(f"TG Send Error: {e}")
-        return ids
-
-    async def edit_or_send(self, ids: List[int], text: str) -> List[int]:
-        """Edits existing messages or sends new ones if text grew."""
-        new_ids = []
-        chunks = []
         
-        # Split text logic (duplicate of above, but necessary for mapping)
-        current_chunk = ""
-        for line in text.splitlines(keepends=True):
-            if len(current_chunk) + len(line) > MAX_TG_CHARS:
-                chunks.append(current_chunk)
+        for section in text_sections:
+            # If adding this section exceeds limit, push current chunk
+            if len(current_chunk) + len(section) + 2 > 4000:
+                final_chunks.append(current_chunk)
                 current_chunk = ""
-            current_chunk += line
-        if current_chunk: chunks.append(current_chunk)
+            current_chunk += section + "\n\n"
+        
+        if current_chunk.strip():
+            final_chunks.append(current_chunk)
 
-        for i, chunk in enumerate(chunks):
-            if i < len(ids):
-                # Try Edit
+        # 2. Update or Send
+        new_ids = []
+        
+        # We try to edit previous messages index-by-index
+        edit_limit = len(message_ids_to_edit) if message_ids_to_edit else 0
+        
+        for i, chunk in enumerate(final_chunks):
+            sent_id = None
+            if i < edit_limit:
                 try:
+                    # Edit existing
                     await self.bot.edit_message_text(
-                        chat_id=self.chat_id, message_id=ids[i], text=chunk, parse_mode='Markdown'
+                        chat_id=self.chat_id,
+                        message_id=message_ids_to_edit[i],
+                        text=chunk,
+                        parse_mode='Markdown'
                     )
-                    new_ids.append(ids[i])
+                    sent_id = message_ids_to_edit[i]
                 except BadRequest as e:
-                    # Message deleted or can't be modified -> Send new
-                    logging.warning(f"Could not edit msg {ids[i]}, sending new. {e}")
-                    m = await self.bot.send_message(chat_id=self.chat_id, text=chunk, parse_mode='Markdown')
-                    new_ids.append(m.message_id)
+                    logger.warning(f"Could not edit msg {message_ids_to_edit[i]}: {e}")
+                    # If edit fails (deleted), fall through to send new
                 except Exception as e:
-                    logging.error(f"Edit failed generic: {e}")
-            else:
-                # Send New
+                    logger.error(f"TG Edit Error: {e}")
+
+            if sent_id is None:
+                # Send new
                 try:
-                    m = await self.bot.send_message(chat_id=self.chat_id, text=chunk, parse_mode='Markdown')
-                    new_ids.append(m.message_id)
+                    msg = await self.bot.send_message(
+                        chat_id=self.chat_id,
+                        text=chunk,
+                        parse_mode='Markdown'
+                    )
+                    sent_id = msg.message_id
                 except Exception as e:
-                    logging.error(f"Send failed: {e}")
-            await asyncio.sleep(0.5)
+                    logger.error(f"TG Send Error: {e}")
+
+            if sent_id:
+                new_ids.append(sent_id)
             
+            await asyncio.sleep(0.3) # Rate limit protection
+
         return new_ids
 
 # -----------------------------------------------------------------------------
-# Reporting Generators
+# 8. Report Generators
 # -----------------------------------------------------------------------------
 
-def generate_alert_report(hits: List[LevelHit], timestamp: datetime) -> str:
-    if not hits:
-        return "💥 *LEVEL ALERTS* 💥\n\n❌ No levels got hit at this time."
-    
-    # Grouping
-    data = {} # Interval -> Exchange -> Type -> List
-    for h in hits:
-        if h.interval not in data: data[h.interval] = {"Binance": {}, "Bybit": {}}
-        if h.signal_type not in data[h.interval][h.exchange]: data[h.interval][h.exchange][h.signal_type] = []
-        data[h.interval][h.exchange][h.signal_type].append(h)
-        
-    ts_str = timestamp.astimezone(timezone(timedelta(hours=3))).strftime("%Y-%m-%d %H:%M:%S UTC+3")
-    msg = f"🚨 *LEVEL ALERTS* 🚨\n\n⚡ {len(hits)} levels got hit!\n\n🕒 {ts_str}\n\n"
-    
-    for interval in ["1M", "1w", "1d"]:
-        if interval not in data: continue
-        msg += f"📅 *{interval} Alerts*\n\n"
-        for exc in ["Binance", "Bybit"]:
-            bull = data[interval][exc].get("bullish", [])
-            bear = data[interval][exc].get("bearish", [])
-            if not bull and not bear: continue
-            
-            msg += f"*{exc}*:\n"
-            if bull:
-                msg += f"🍏 *Bullish ({len(bull)})*\n" + "".join([f"• {h.symbol} @ ${h.level_price:.6f}\n" for h in bull]) + "\n"
-            if bear:
-                msg += f"🔻 *Bearish ({len(bear)})*\n" + "".join([f"• {h.symbol} @ ${h.level_price:.6f}\n" for h in bear]) + "\n"
-        msg += "——————————————————\n\n"
-    return msg.strip()
-
-def generate_full_report(results: List[tuple], low_mv: List[LowMovementResult], timestamp: datetime) -> List[str]:
+def build_full_scan_report(levels: List[MarketLevel], low_vol: List[LowVolResult]) -> List[str]:
     sections = []
+    ts = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=3))).strftime("%Y-%m-%d %H:%M:%S UTC+3")
     
-    # 1. Reversal Summary
-    ts_str = timestamp.astimezone(timezone(timedelta(hours=3))).strftime("%Y-%m-%d %H:%M:%S UTC+3")
-    bin_cnt = len([r for r in results if r[0] == "Binance"])
-    byb_cnt = len([r for r in results if r[0] == "Bybit"])
-    
-    header = (f"💥 *Reversal Level Scanner*\n\n✅ Total Signals: {len(results)}\n\n"
-              f"*Binance*: {bin_cnt} | *Bybit*: {byb_cnt}\n\n🕒 {ts_str}")
-    sections.append(header)
-    
-    # 2. Grouping
-    # Structure: Interval -> Exchange -> Signal -> List of symbols
-    tree = {}
-    for r in results:
-        # r = (exchange, symbol, market, interval, signal_type, price)
-        ex, sym, _, iv, sig, _ = r
-        if iv not in tree: tree[iv] = {"Binance": {"bullish": [], "bearish": []}, "Bybit": {"bullish": [], "bearish": []}}
-        tree[iv][ex][sig].append(sym)
+    # Header
+    bin_c = len([l for l in levels if l.exchange == "Binance"])
+    byb_c = len([l for l in levels if l.exchange == "Bybit"])
+    sections.append(f"💥 *Reversal Level Scanner*\n\n✅ Total: {len(levels)}\n*Binance*: {bin_c} | *Bybit*: {byb_c}\n🕒 {ts}")
+
+    # Reversal Levels
+    # Organize: Interval -> Exchange -> Signal -> Symbols
+    grouped = {}
+    for l in levels:
+        if l.interval not in grouped: grouped[l.interval] = {"Binance": {}, "Bybit": {}}
+        ex_dict = grouped[l.interval][l.exchange]
+        if l.signal_type not in ex_dict: ex_dict[l.signal_type] = []
+        ex_dict[l.signal_type].append(l.symbol)
+
+    for interval in ["1M", "1w", "1d"]:
+        if interval not in grouped: continue
         
-    for iv in ["1M", "1w", "1d"]:
-        if iv not in tree: continue
-        count = sum(len(tree[iv][ex][s]) for ex in tree[iv] for s in tree[iv][ex])
-        if count == 0: continue
+        block = f"📅 *{interval} Timeframe*\n"
+        has_data = False
         
-        sec = f"📅 *{iv} Timeframe* ({count} signals)\n\n"
         for ex in ["Binance", "Bybit"]:
-            bull = sorted(tree[iv][ex]["bullish"])
-            bear = sorted(tree[iv][ex]["bearish"])
-            if not bull and not bear: continue
+            data = grouped[interval][ex]
+            if not data: continue
             
-            sec += f"*{ex}*:\n"
-            if bull: sec += f"🍏 *Bullish ({len(bull)})*\n" + "\n".join([f"• {s}" for s in bull]) + "\n\n"
-            if bear: sec += f"🔻 *Bearish ({len(bear)})*\n" + "\n".join([f"• {s}" for s in bear]) + "\n\n"
+            bullish = sorted(data.get("bullish", []))
+            bearish = sorted(data.get("bearish", []))
+            if not bullish and not bearish: continue
+            
+            has_data = True
+            block += f"\n*{ex}*:\n"
+            if bullish: block += f"🍏 *Bullish ({len(bullish)})*\n" + "\n".join([f"• {s}" for s in bullish]) + "\n"
+            if bearish: block += f"🔻 *Bearish ({len(bearish)})*\n" + "\n".join([f"• {s}" for s in bearish]) + "\n"
+
+        if has_data:
+            block += "——————————————————"
+            sections.append(block)
+
+    # Low Volatility
+    if low_vol:
+        low_vol.sort(key=lambda x: x.movement_percent)
+        block = "📉 *Low Movement Daily (<1.0%)*\n"
         
-        sec += "——————————————————\n\n"
-        sections.append(sec.strip())
+        bin_l = [x for x in low_vol if x.exchange == "Binance"]
+        byb_l = [x for x in low_vol if x.exchange == "Bybit"]
         
-    # 3. Low Movement
-    if low_mv:
-        low_sec = "📉 *Low Movement Daily Candles (<1.0%)*\n\n"
-        low_mv.sort(key=lambda x: x.movement_percent)
+        if bin_l: block += "\n*Binance*:\n" + "".join([f"• {x.symbol} ({x.movement_percent:.2f}%)\n" for x in bin_l])
+        if byb_l: block += "\n*Bybit*:\n" + "".join([f"• {x.symbol} ({x.movement_percent:.2f}%)\n" for x in byb_l])
         
-        bin_low = [x for x in low_mv if x.exchange == "Binance"]
-        byb_low = [x for x in low_mv if x.exchange == "Bybit"]
-        
-        if bin_low:
-            low_sec += "*Binance*:\n" + "".join([f"• {x.symbol} ({x.movement_percent:.2f}%)\n" for x in bin_low]) + "\n"
-        if byb_low:
-            low_sec += "*Bybit*:\n" + "".join([f"• {x.symbol} ({x.movement_percent:.2f}%)\n" for x in byb_low]) + "\n"
-        
-        low_sec += "——————————————————\n\n"
-        sections.append(low_sec.strip())
+        block += "\n——————————————————"
+        sections.append(block)
 
     return sections
 
+def build_alert_report(hits: List[LevelHit]) -> List[str]:
+    ts = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=3))).strftime("%Y-%m-%d %H:%M:%S UTC+3")
+    
+    if not hits:
+        return [f"💥 *LEVEL ALERTS* 💥\n\n❌ No levels got hit today.\n\n🕒 {ts}"]
+
+    header = f"🚨 *LEVEL ALERTS* 🚨\n\n⚡ {len(hits)} levels hit today!\n🕒 {ts}\n"
+    sections = [header]
+
+    # Group by Interval -> Exchange -> Signal
+    grouped = {}
+    for h in hits:
+        if h.interval not in grouped: grouped[h.interval] = {"Binance": {}, "Bybit": {}}
+        d = grouped[h.interval][h.exchange]
+        if h.signal_type not in d: d[h.signal_type] = []
+        d[h.signal_type].append(h)
+
+    for interval in ["1M", "1w", "1d"]:
+        if interval not in grouped: continue
+        block = f"📅 *{interval} Alerts*\n"
+        has_content = False
+        
+        for ex in ["Binance", "Bybit"]:
+            d = grouped[interval][ex]
+            if not d: continue
+            
+            bull = d.get("bullish", [])
+            bear = d.get("bearish", [])
+            if not bull and not bear: continue
+            
+            has_content = True
+            block += f"\n*{ex}*:\n"
+            if bull: 
+                block += f"🍏 *Bullish ({len(bull)})*\n"
+                block += "".join([f"• {h.symbol} @ ${h.level_price:.4f}\n" for h in bull])
+            if bear: 
+                block += f"🔻 *Bearish ({len(bear)})*\n"
+                block += "".join([f"• {h.symbol} @ ${h.level_price:.4f}\n" for h in bear])
+        
+        if has_content:
+            block += "\n——————————————————"
+            sections.append(block)
+            
+    return sections
+
 # -----------------------------------------------------------------------------
-# Main Controllers
+# 9. Main Orchestration
 # -----------------------------------------------------------------------------
 
-import itertools
-
-async def run_full_scan(clients: List[ExchangeClient], tg: TelegramManager):
-    logging.info("🚀 Starting FULL SCAN...")
+async def run_full_scan(clients: List[ExchangeClient], tg: TelegramBot):
+    logger.info("🕵️ STARTING FULL MARKET SCAN")
     
-    # 1. Discovery Phase
-    all_tasks = []
-    # Semaphores for discovery are not strictly needed if clients use single request, 
-    # but good practice if get_symbols becomes complex.
+    # 1. Fetch and Prioritize Symbols
+    logger.info("Fetching symbols...")
+    raw_syms = {}
+    async def get_syms_safe(c):
+        try:
+            return c.name, await c.get_symbols()
+        except Exception as e:
+            logger.error(f"{c.name} symbol fetch failed: {e}")
+            return c.name, (set(), set())
+            
+    results = await asyncio.gather(*(get_syms_safe(c) for c in clients))
+    for r in results: raw_syms[r[0]] = r[1]
+
+    # Priority Deduplication
+    def norm(s): return s.replace(":", "").replace("/", "") # rough normalization
     
-    # Maps to hold prioritized symbols
-    # structure: raw_data[exchange_name] = (perp_set, spot_set)
-    raw_data = {} 
-
-    async def fetch_symbols_wrapper(client):
-        p, s = await client.get_symbols()
-        return client.name, p, s
-
-    results = await asyncio.gather(*(fetch_symbols_wrapper(c) for c in clients))
-    for r in results:
-        raw_data[r[0]] = (r[1], r[2])
-
-    # 2. Priority Logic (Set Arithmetic)
-    # Binance Perps > Binance Spot > Bybit Perps > Bybit Spot
+    # Build task list: (Client, Symbol, Market)
+    tasks = []
+    seen = set()
     
-    def norm_set(s: Set[str]) -> Dict[str, str]:
-        # Returns {normalized: original}
-        return {normalize_symbol(x): x for x in s if x not in IGNORED_SYMBOLS}
-
-    b_perp = norm_set(raw_data["Binance"][0])
-    b_spot = norm_set(raw_data["Binance"][1])
-    by_perp = norm_set(raw_data["Bybit"][0])
-    by_spot = norm_set(raw_data["Bybit"][1])
-
-    final_targets = [] # List of (Client, Symbol, Market)
-
-    # Step 1: Binance Perps (Take all)
-    seen = set(b_perp.keys())
-    final_targets.extend([(clients[0], sym, "perp") for sym in b_perp.values()]) # Assume clients[0] is Binance
-
-    # Step 2: Binance Spots (Take if not in seen)
-    unique_b_spot = {k: v for k, v in b_spot.items() if k not in seen}
-    seen.update(unique_b_spot.keys())
-    final_targets.extend([(clients[0], sym, "spot") for sym in unique_b_spot.values()])
-
-    # Step 3: Bybit Perps
-    unique_by_perp = {k: v for k, v in by_perp.items() if k not in seen}
-    seen.update(unique_by_perp.keys())
-    final_targets.extend([(clients[1], sym, "perp") for sym in unique_by_perp.values()]) # Assume clients[1] is Bybit
-
-    # Step 4: Bybit Spots
-    unique_by_spot = {k: v for k, v in by_spot.items() if k not in seen}
-    final_targets.extend([(clients[1], sym, "spot") for sym in unique_by_spot.values()])
-
-    logging.info(f"Total symbols to scan: {len(final_targets)}")
-
-    # 3. Scanning Phase
-    scan_results = []
-    low_mv_results = []
+    # Order: Binance Perp -> Binance Spot -> Bybit Perp -> Bybit Spot
+    priorities = [
+        ("Binance", 0, "perp"), ("Binance", 1, "spot"),
+        ("Bybit", 0, "perp"), ("Bybit", 1, "spot")
+    ]
     
-    sem = asyncio.Semaphore(CONCURRENCY_LIMIT)
+    for ex_name, idx, market in priorities:
+        if ex_name not in raw_syms: continue
+        pool = raw_syms[ex_name][idx]
+        client = next(c for c in clients if c.name == ex_name)
+        
+        for s in pool:
+            n = norm(s)
+            if n not in seen and s not in Config.IGNORED_SYMBOLS:
+                seen.add(n)
+                tasks.append((client, s, market))
+
+    logger.info(f"Targeting {len(tasks)} unique symbols.")
+
+    # 2. Parallel Scanning
+    levels = []
+    low_vols = []
     
-    async def worker(client, symbol, market):
+    # We use a single semaphore to control TOTAL concurrency across all tasks
+    sem = asyncio.Semaphore(Config.CONCURRENCY_LIMIT)
+    
+    async def scan_worker(client, symbol, market):
         async with sem:
-            # Check all 3 intervals
-            for interval in ["1M", "1w", "1d"]:
+            # Check 1D first (optimization: most likely to fail HTTP if bad)
+            # Actually, check all 3.
+            for interval in ["1d", "1w", "1M"]:
                 try:
                     candles = await client.fetch_candles(symbol, interval, market)
                     
-                    # Reversal Check
-                    price, sig = analyze_candles(candles)
-                    if price and sig and not check_current_touch(candles, price):
-                        scan_results.append((client.name, symbol, market, interval, sig, price))
-                    
-                    # Low Movement Check (only 1d)
+                    # Logic 1: Reversals
+                    price, sig = detect_reversal_pattern(candles)
+                    if price:
+                        # Ensure current candle hasn't already broken the level?
+                        # User requirement says: "keep same functionality". 
+                        # Legacy checked if current touched. We record level anyway?
+                        # Legacy: "if equal_price ... and not current_candle_touched_price"
+                        touched, _ = check_level_hit(candles, price)
+                        if not touched:
+                            levels.append(MarketLevel(
+                                client.name, symbol, market, interval, sig, price, 
+                                datetime.now(timezone.utc).isoformat()
+                            ))
+
+                    # Logic 2: Low Vol (Daily only)
                     if interval == "1d":
-                        mv = analyze_low_movement(candles)
-                        if mv is not None and mv < 1.0:
-                            low_mv_results.append(LowMovementResult(client.name, symbol, market, interval, mv))
+                        mv = detect_low_volatility(candles)
+                        if mv:
+                            low_vols.append(LowVolResult(client.name, symbol, market, mv))
                             
                 except Exception as e:
-                    pass # logging.debug(f"Err {symbol}: {e}")
+                    # logger.debug(f"Scan error {symbol}: {e}")
+                    pass
 
-    # Run workers
-    total_tasks = [worker(c, s, m) for c, s, m in final_targets]
-    # Use tqdm? In async, straightforward iteration with tqdm is harder, 
-    # but we can use a simple progress logger or just await gather.
-    # For simplicity in single file, just await gather.
-    
-    start_time = time.time()
-    chunk_size = 1000
-    # Chunking to prevent memory explosion on gather for 5000+ tasks
-    for i in range(0, len(total_tasks), chunk_size):
-        chunk = total_tasks[i:i+chunk_size]
-        await asyncio.gather(*chunk)
-        logging.info(f"Processed {min(i+chunk_size, len(total_tasks))}/{len(total_tasks)} symbols...")
-    
-    logging.info(f"Scan finished in {time.time() - start_time:.2f}s")
+    # Batch execution
+    logger.info("Executing concurrent scan...")
+    # Chunking tasks to report progress
+    chunk_size = 500
+    total = len(tasks)
+    for i in range(0, total, chunk_size):
+        chunk = tasks[i:i+chunk_size]
+        await asyncio.gather(*(scan_worker(*args) for args in chunk))
+        logger.info(f"Progress: {min(i+chunk_size, total)}/{total}")
 
-    # 4. Reporting Phase
-    timestamp = datetime.utcnow().replace(tzinfo=timezone.utc)
-    report_sections = generate_full_report(scan_results, low_mv_results, timestamp)
+    # 3. Reporting
+    logger.info(f"Scan Complete. Found {len(levels)} levels, {len(low_vols)} low vol.")
     
-    for section in report_sections:
-        await tg.send_chunks(section)
+    StateManager.save_levels(levels)
     
-    # 5. Init Alerts Msg
-    alert_ids = await tg.send_chunks("💥 *LEVEL ALERTS* 💥\n\n❌ No levels got hit at this time.")
-    with open(MSG_ID_FILE, 'w') as f:
-        json.dump({"message_ids": alert_ids}, f)
-        
-    # 6. Save Levels
-    save_data = {"last_updated": timestamp.isoformat(), "levels": {}}
-    for r in scan_results:
-        # r = (exchange, symbol, market, interval, signal_type, price)
-        key = f"{r[0]}_{r[1]}_{r[2]}_{r[3]}"
-        save_data["levels"][key] = {
-            "exchange": r[0], "symbol": r[1], "market": r[2], "interval": r[3],
-            "signal_type": r[4], "price": r[5], "timestamp": timestamp.isoformat()
-        }
-    
-    with open(LEVELS_FILE, 'w') as f:
-        json.dump(save_data, f, indent=2)
+    # Clear daily hits on a full scan? 
+    # Usually full scan runs once a day. Yes, reset hits file for fresh day.
+    StateManager.save_daily_hits([]) 
+    StateManager.save_msg_ids([]) # Reset msg ids
 
-async def run_price_check(clients: List[ExchangeClient], tg: TelegramManager):
-    logging.info("🔍 Running Price Check...")
+    report_sections = build_full_scan_report(levels, low_vols)
+    await tg.send_report(report_sections)
     
-    if not os.path.exists(LEVELS_FILE):
-        logging.info("No levels file found.")
-        return
+    # Initialize the Alerts message
+    alert_ids = await tg.send_report(build_alert_report([]))
+    StateManager.save_msg_ids(alert_ids)
 
-    with open(LEVELS_FILE, 'r') as f:
-        data = json.load(f)
-        levels = data.get("levels", {})
 
+async def run_price_check(clients: List[ExchangeClient], tg: TelegramBot):
+    logger.info("🔍 PRICE CHECK MODE")
+    
+    levels = StateManager.load_levels()
     if not levels:
-        logging.info("No levels to check.")
+        logger.warning("No levels found to check.")
         return
 
-    # Group by Symbol/Exchange/Market to batch checks? 
-    # Actually, fetch_candles is cheap per symbol.
-    # But one symbol might have 1M, 1w, 1d levels. We should fetch candles once per symbol per interval.
+    # Load existing hits to append to them
+    confirmed_hits = StateManager.load_daily_hits()
+    initial_hit_count = len(confirmed_hits)
     
-    tasks = []
-    hits = []
-    sem = asyncio.Semaphore(CONCURRENCY_LIMIT)
+    # We only check distinct symbol/interval combos to save requests
+    # But wait, different levels might exist for same symbol.
+    # We must fetch candle once, check multiple levels.
+    
+    # Group levels by (Client, Symbol, Market, Interval)
+    CheckTask = NamedTuple("CheckTask", [("client_name", str), ("symbol", str), ("market", str), ("interval", str)])
+    grouped_levels: Dict[CheckTask, List[MarketLevel]] = {}
+    
+    for l in levels:
+        key = CheckTask(l.exchange, l.symbol, l.market, l.interval)
+        if key not in grouped_levels: grouped_levels[key] = []
+        grouped_levels[key].append(l)
 
-    # Determine unique fetches needed: (Client, Symbol, Market, Interval)
-    # But wait, checking a level requires the specific timeframe candle.
+    sem = asyncio.Semaphore(Config.CONCURRENCY_LIMIT)
     
-    async def check_level(lvl_key, lvl_data):
+    async def check_worker(key: CheckTask, levels_list: List[MarketLevel]):
         async with sem:
+            client = next((c for c in clients if c.name == key.client_name), None)
+            if not client: return
+            
             try:
-                client = next((c for c in clients if c.name == lvl_data['exchange']), None)
-                if not client: return
-                
-                candles = await client.fetch_candles(lvl_data['symbol'], lvl_data['interval'], lvl_data['market'])
+                candles = await client.fetch_candles(key.symbol, key.interval, key.market)
                 if not candles: return
                 
-                # Check hit logic: Current candle Low/High touches Level Price
-                curr = candles[0]
-                price = lvl_data['price']
-                
-                if curr.low <= price <= curr.high:
-                    hits.append(LevelHit(
-                        exchange=lvl_data['exchange'],
-                        symbol=lvl_data['symbol'],
-                        market=lvl_data['market'],
-                        interval=lvl_data['interval'],
-                        signal_type=lvl_data['signal_type'],
-                        level_price=price,
-                        current_price=curr.close,
-                        current_low=curr.low,
-                        current_high=curr.high,
-                        original_timestamp=lvl_data['timestamp']
-                    ))
-            except Exception as e:
+                for lvl in levels_list:
+                    hit, close_price = check_level_hit(candles, lvl.price)
+                    if hit:
+                        # Create a unique ID for this hit today
+                        hit_id = f"{lvl.exchange}_{lvl.symbol}_{lvl.interval}_{lvl.price}"
+                        
+                        # Add to confirmed list
+                        confirmed_hits.append(LevelHit(
+                            hit_id, lvl.exchange, lvl.symbol, lvl.market, lvl.interval,
+                            lvl.signal_type, lvl.price, close_price,
+                            datetime.now(timezone.utc).isoformat()
+                        ))
+            except:
                 pass
 
-    await asyncio.gather(*(check_level(k, v) for k, v in levels.items()))
+    logger.info(f"Checking {len(grouped_levels)} unique candle contexts...")
+    await asyncio.gather(*(check_worker(k, v) for k, v in grouped_levels.items()))
+
+    # Deduplicate (latest hits kept, or just set logic based on ID)
+    # Actually, we just want unique IDs.
+    unique_hits_map = {h.id: h for h in confirmed_hits}
+    final_hits = list(unique_hits_map.values())
     
-    logging.info(f"Hits detected: {len(hits)}")
+    logger.info(f"Hits before: {initial_hit_count}, Hits after: {len(final_hits)}")
+
+    # Save state
+    StateManager.save_daily_hits(final_hits)
     
     # Update Telegram
-    timestamp = datetime.utcnow().replace(tzinfo=timezone.utc)
-    report = generate_alert_report(hits, timestamp)
+    # We regenerate the ENTIRE report based on the ACCUMULATED hits
+    report_sections = build_alert_report(final_hits)
+    msg_ids = StateManager.load_msg_ids()
     
-    prev_ids = []
-    if os.path.exists(MSG_ID_FILE):
-        try:
-            with open(MSG_ID_FILE, 'r') as f:
-                prev_ids = json.load(f).get("message_ids", [])
-        except: pass
-
-    new_ids = await tg.edit_or_send(prev_ids, report)
-    
-    with open(MSG_ID_FILE, 'w') as f:
-        json.dump({"message_ids": new_ids, "timestamp": timestamp.isoformat()}, f)
-
-
-# -----------------------------------------------------------------------------
-# Entry Point
-# -----------------------------------------------------------------------------
+    new_ids = await tg.send_report(report_sections, msg_ids)
+    StateManager.save_msg_ids(new_ids)
 
 async def main():
-    # Env vars
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
-    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+    run_mode = os.getenv("RUN_MODE", "full_scan")
     proxy_url = os.getenv("PROXY_LIST_URL")
-    mode = os.getenv("RUN_MODE", "full_scan")
 
-    if not token or not chat_id:
-        logging.error("Missing Telegram Config")
+    if not proxy_url:
+        logger.error("❌ PROXY_LIST_URL is missing")
         return
 
-    # Init Components
-    tg = TelegramManager(token, chat_id)
-    proxy_mgr = AsyncProxyManager(proxy_url)
-    await proxy_mgr.refresh_proxies()
+    # 1. Setup Infrastructure
+    proxy_mgr = SmartProxyManager(proxy_url)
+    await proxy_mgr.load_and_verify() # <--- WARMUP PHASE
 
-    # Start proxy background refresher
-    async def proxy_refresher():
-        while True:
-            await asyncio.sleep(600)
-            await proxy_mgr.refresh_proxies()
-    
-    refresher_task = asyncio.create_task(proxy_refresher())
+    binance = BinanceClient(proxy_mgr)
+    bybit = BybitClient(proxy_mgr)
+    tg_bot = TelegramBot()
 
-    # Context Manage Clients
-    binance = BinanceAsync(proxy_mgr)
-    bybit = BybitAsync(proxy_mgr)
-
+    # 2. Run
     async with binance, bybit:
         clients = [binance, bybit]
-        
-        if mode == "price_check":
-            await run_price_check(clients, tg)
+        if run_mode == "price_check":
+            await run_price_check(clients, tg_bot)
         else:
-            await run_full_scan(clients, tg)
-
-    refresher_task.cancel()
+            await run_full_scan(clients, tg_bot)
 
 if __name__ == "__main__":
     try:
-        # Use uvloop if available for extra speed (optional)
-        try:
-            import uvloop
-            uvloop.install()
-        except ImportError:
-            pass
         asyncio.run(main())
     except KeyboardInterrupt:
         pass
