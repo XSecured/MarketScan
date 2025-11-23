@@ -709,7 +709,7 @@ def current_candle_touched_price(df, price):
     current_candle = df.iloc[0]
     return float(current_candle['low']) <= price <= float(current_candle['high'])
 
-def check_low_movement_daily_candle(df, threshold_percent=2.5):
+def check_low_movement_daily_candle(df, threshold_percent=1.0):
     """
     Checks if the movement between open and close of the last closed daily candle
     is less than the specified threshold percentage.
@@ -807,7 +807,7 @@ def create_beautiful_telegram_report(results, low_movement_results=None):
     # --- Low Movement Section ---
     if low_movement_results:
         low_sorted = sorted(low_movement_results, key=lambda x: x['movement_percent'])
-        low_msg = "📉 *Low Movement Daily Candles (<2.5%)*\n\n"
+        low_msg = "📉 *Low Movement Daily Candles (<1.0%)*\n\n"
         binance_low = [item for item in low_sorted if item['exchange'] == 'Binance']
         bybit_low = [item for item in low_sorted if item['exchange'] == 'Bybit']
 
