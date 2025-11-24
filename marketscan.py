@@ -43,9 +43,10 @@ class Config:
     LOW_MOV_THRESHOLD = 1.0      # Strict 1.0%
     MAX_TG_CHARS = 4000          # Telegram limit safety buffer
     
-    # Persistence (Must match user's expected file structure)
+    # Persistence
     FILE_LEVELS = Path("detected_levels.json")
     FILE_MSG_IDS = Path("level_alert_message.json")
+    FILE_HITS = Path("daily_hits.json") # To store hits logic
     
     # Telegram
     TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -84,6 +85,7 @@ class MarketLevel:
 
 @dataclass
 class HitResult:
+    id: str # Unique identifier for deduplication
     exchange: str
     symbol: str
     market: str
@@ -91,6 +93,7 @@ class HitResult:
     signal_type: str
     level_price: float
     curr_price: float
+    hit_time: str
 
 @dataclass
 class LowMovResult:
@@ -106,7 +109,6 @@ class LowMovResult:
 class ProxyManager:
     """
     Manages proxies with a fail-fast rotation strategy.
-    No pre-warming (too slow). We filter as we go.
     """
     def __init__(self, url: str):
         self.url = url
@@ -135,7 +137,6 @@ class ProxyManager:
     def get_random(self) -> Optional[str]:
         """Get a random proxy that isn't marked as bad."""
         if not self.proxies: return None
-        # Try 10 times to find a good one, else return whatever
         for _ in range(10):
             p = random.choice(self.proxies)
             if p not in self.bad_proxies:
@@ -153,13 +154,11 @@ class HttpClient:
     def __init__(self, proxy_mgr: ProxyManager):
         self.pm = proxy_mgr
         self.session: Optional[aiohttp.ClientSession] = None
-        # Global semaphore to prevent opening too many file descriptors
         self.sem = asyncio.Semaphore(Config.CONCURRENCY)
 
     async def start(self):
-        # Optimized connector parameters
         conn = aiohttp.TCPConnector(
-            limit=0, # Limit handled by semaphore
+            limit=0,
             ttl_dns_cache=300,
             ssl=False,
             keepalive_timeout=30
@@ -185,7 +184,7 @@ class HttpClient:
                         elif resp.status >= 500: # Server error
                             pass # Retry
                 except Exception:
-                    self.pm.mark_bad(proxy) # Mark bad immediately
+                    self.pm.mark_bad(proxy)
                 
                 await asyncio.sleep(0.2) # Jitter
             return None
@@ -198,7 +197,6 @@ class Binance:
     def __init__(self, http: HttpClient): self.http = http
 
     async def get_symbols(self) -> Tuple[Set[str], Set[str]]:
-        """Returns (PerpSymbols, SpotSymbols)"""
         t1 = self.http.get('https://fapi.binance.com/fapi/v1/exchangeInfo')
         t2 = self.http.get('https://api.binance.com/api/v3/exchangeInfo')
         r1, r2 = await asyncio.gather(t1, t2)
@@ -213,8 +211,6 @@ class Binance:
         base = 'https://api.binance.com/api/v3/klines' if market == "spot" else 'https://fapi.binance.com/fapi/v1/klines'
         data = await self.http.get(base, {'symbol': symbol, 'interval': interval, 'limit': 4})
         if not data: return []
-        # Binance: [Time, Open, High, Low, Close, Vol] - Oldest first
-        # We reverse to get Newest first [0]
         return [Candle(float(x[1]), float(x[2]), float(x[3]), float(x[4]), float(x[5])) for x in reversed(data)]
 
 class Bybit:
@@ -231,12 +227,10 @@ class Bybit:
 
     async def get_candles(self, symbol: str, interval: str, market: str) -> List[Candle]:
         cat = 'linear' if market == 'perp' else 'spot'
-        # Map 1M/1w/1d to Bybit format
         b_int = {"1M": "M", "1w": "W", "1d": "D"}[interval]
         data = await self.http.get('https://api.bybit.com/v5/market/kline', 
                                    {'category': cat, 'symbol': symbol, 'interval': b_int, 'limit': 4})
         if not data or 'result' not in data: return []
-        # Bybit: Newest first by default
         return [Candle(float(x[1]), float(x[2]), float(x[3]), float(x[4]), float(x[5])) for x in data['result']['list']]
 
 # -----------------------------------------------------------------------------
@@ -244,18 +238,15 @@ class Bybit:
 # -----------------------------------------------------------------------------
 
 def analyze_reversal(candles: List[Candle]) -> Tuple[Optional[float], Optional[str]]:
-    """Checks if idx 2 Close == idx 1 Open (0.3% tol). Returns (Price, Type)."""
     if len(candles) < 3: return None, None
     last, prev = candles[1], candles[2]
     
-    # Equality Check
     avg = (prev.close + last.open) / 2
     if avg == 0 or abs(prev.close - last.open) > (0.003 * avg):
         return None, None
     
     price = prev.close
     
-    # Pattern Logic
     # Bullish: Prev RED, Last GREEN
     if (prev.close < prev.open) and (last.close > last.open):
         return price, "bullish"
@@ -265,21 +256,166 @@ def analyze_reversal(candles: List[Candle]) -> Tuple[Optional[float], Optional[s
     return None, None
 
 def analyze_low_movement(candles: List[Candle]) -> Optional[float]:
-    """Returns movement % if < 1.0%"""
     if len(candles) < 2: return None
-    c = candles[1] # Last closed
+    c = candles[1]
     if c.open == 0: return None
     move = abs((c.close - c.open) / c.open) * 100
     return move if move < Config.LOW_MOV_THRESHOLD else None
 
 def is_level_hit(candles: List[Candle], level_price: float) -> bool:
-    """Checks if CURRENT (Live) candle touches price"""
     if not candles: return False
     c = candles[0]
     return c.low <= level_price <= c.high
 
+def get_ts_string():
+    # UTC+3
+    return datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=3))).strftime("%Y-%m-%d %H:%M:%S UTC+3")
+
 # -----------------------------------------------------------------------------
-# 6. Telegram & State Manager (The Critical Fix)
+# 6. Report Builders (FULL VERSION)
+# -----------------------------------------------------------------------------
+
+def build_full_scan_report(levels: List[MarketLevel], low_movs: List[LowMovResult]) -> List[str]:
+    """Generates the main market scan report sections."""
+    sections = []
+    
+    # 1. Summary Header
+    binance_count = len([l for l in levels if l.exchange == "Binance"])
+    bybit_count = len([l for l in levels if l.exchange == "Bybit"])
+    
+    header = (
+        f"💥 *Reversal Level Scanner*\n\n"
+        f"✅ Total Reversal Signals: {len(levels)}\n\n"
+        f"*Binance*: {binance_count} | *Bybit*: {bybit_count}\n\n"
+        f"🕒 {get_ts_string()}"
+    )
+    sections.append(header)
+
+    # 2. Group Levels by Interval -> Exchange -> Signal -> Symbol
+    # Tree Structure: grouped[interval][exchange][signal] = [symbol_list]
+    grouped = {}
+    for l in levels:
+        if l.interval not in grouped:
+            grouped[l.interval] = {"Binance": {"bullish": [], "bearish": []}, "Bybit": {"bullish": [], "bearish": []}}
+        
+        grouped[l.interval][l.exchange][l.signal_type].append(l.symbol)
+
+    # 3. Build Sections
+    timeframe_order = ["1M", "1w", "1d"]
+    for interval in timeframe_order:
+        if interval not in grouped: continue
+        
+        # Calculate total signals for this interval to see if we skip
+        tf_data = grouped[interval]
+        tf_total = sum(len(tf_data[ex][st]) for ex in tf_data for st in tf_data[ex])
+        if tf_total == 0: continue
+
+        section_text = f"📅 *{interval} Timeframe* ({tf_total} signals)\n\n"
+        
+        for exchange in ["Binance", "Bybit"]:
+            bullish = sorted(tf_data[exchange]["bullish"])
+            bearish = sorted(tf_data[exchange]["bearish"])
+            
+            if not bullish and not bearish:
+                continue
+
+            section_text += f"*{exchange}*:\n"
+            
+            if bullish:
+                section_text += f"🍏 *Bullish ({len(bullish)})*\n"
+                for s in bullish:
+                    section_text += f"• {s}\n"
+                section_text += "\n"
+                
+            if bearish:
+                section_text += f"🔻 *Bearish ({len(bearish)})*\n"
+                for s in bearish:
+                    section_text += f"• {s}\n"
+                section_text += "\n"
+        
+        section_text += "——————————————————\n\n"
+        sections.append(section_text.strip())
+
+    # 4. Low Movement Section
+    if low_movs:
+        low_movs.sort(key=lambda x: x.movement)
+        
+        low_msg = "📉 *Low Movement Daily Candles (<1.0%)*\n\n"
+        
+        binance_low = [x for x in low_movs if x.exchange == "Binance"]
+        bybit_low = [x for x in low_movs if x.exchange == "Bybit"]
+        
+        if binance_low:
+            low_msg += "*Binance*:\n"
+            for item in binance_low:
+                low_msg += f"• {item.symbol} ({item.movement:.2f}%)\n"
+            low_msg += "\n"
+            
+        if bybit_low:
+            low_msg += "*Bybit*:\n"
+            for item in bybit_low:
+                low_msg += f"• {item.symbol} ({item.movement:.2f}%)\n"
+            low_msg += "\n"
+            
+        low_msg += "——————————————————\n\n"
+        sections.append(low_msg.strip())
+        
+    return sections
+
+def build_alerts_report(hits: List[HitResult]) -> List[str]:
+    """Generates the alert report. Handles both empty and populated states."""
+    if not hits:
+        return [f"💥 *LEVEL ALERTS* 💥\n\n❌ No levels got hit at this time.\n\n🕒 {get_ts_string()}"]
+
+    # Header
+    header = f"🚨 *LEVEL ALERTS* 🚨\n\n⚡ {len(hits)} levels got hit!\n\n🕒 {get_ts_string()}\n\n"
+    sections = [header]
+
+    # Group Hits: Interval -> Exchange -> Signal -> List[HitResult]
+    grouped = {}
+    for h in hits:
+        if h.interval not in grouped:
+            grouped[h.interval] = {"Binance": {"bullish": [], "bearish": []}, "Bybit": {"bullish": [], "bearish": []}}
+        grouped[h.interval][h.exchange][h.signal_type].append(h)
+
+    timeframe_order = ["1M", "1w", "1d"]
+    for interval in timeframe_order:
+        if interval not in grouped: continue
+        
+        # Check if any hits in this interval
+        tf_data = grouped[interval]
+        has_hits = any(tf_data[ex][st] for ex in tf_data for st in tf_data[ex])
+        if not has_hits: continue
+        
+        section_text = f"📅 *{interval} Alerts*\n\n"
+        
+        for exchange in ["Binance", "Bybit"]:
+            bullish = tf_data[exchange]["bullish"]
+            bearish = tf_data[exchange]["bearish"]
+            
+            if not bullish and not bearish: continue
+            
+            section_text += f"*{exchange}*:\n"
+            
+            if bullish:
+                section_text += f"🍏 *Bullish ({len(bullish)})*\n"
+                for h in bullish:
+                    section_text += f"• {h.symbol} @ ${h.level_price:.6f}\n"
+                section_text += "\n"
+                
+            if bearish:
+                section_text += f"🔻 *Bearish ({len(bearish)})*\n"
+                for h in bearish:
+                    section_text += f"• {h.symbol} @ ${h.level_price:.6f}\n"
+                section_text += "\n"
+                
+        section_text += "——————————————————\n\n"
+        sections.append(section_text.strip())
+        
+    return sections
+
+# -----------------------------------------------------------------------------
+# 7. Telegram & State Manager
 # -----------------------------------------------------------------------------
 
 class TelegramManager:
@@ -293,19 +429,14 @@ class TelegramManager:
                 logger.error("telegram module missing")
 
     async def send_smart_message(self, text_parts: List[str], load_ids_from_file: bool = False):
-        """
-        Handles the logic of Sending vs Editing.
-        1. Consolidates text parts into chunks.
-        2. If load_ids_from_file is True, it tries to EDIT existing messages.
-        3. Saves the final message IDs to file.
-        """
         if not self.bot: return
 
-        # 1. Chunking
+        # 1. Chunking logic (Standard 4096 char limit)
         chunks = []
         curr = ""
         for part in text_parts:
-            if len(curr) + len(part) + 2 > Config.MAX_TG_CHARS:
+            # +2 for double newline
+            if len(curr) + len(part) + 4 > Config.MAX_TG_CHARS:
                 chunks.append(curr.strip())
                 curr = ""
             curr += part + "\n\n"
@@ -329,7 +460,7 @@ class TelegramManager:
         for i, chunk in enumerate(chunks):
             msg_id = None
             
-            # Try Edit
+            # Try Edit if we have an old ID
             if i < len(old_ids):
                 try:
                     await self.bot.edit_message_text(
@@ -341,14 +472,14 @@ class TelegramManager:
                     msg_id = old_ids[i]
                 except BadRequest as e:
                     if "message is not modified" in str(e):
-                        # This is GOOD. It means content is same. Keep ID.
+                        # Content is identical. Keep ID.
                         msg_id = old_ids[i]
                     else:
                         logger.warning(f"⚠️ Edit failed for ID {old_ids[i]}: {e}. Sending new.")
                 except Exception as e:
                     logger.error(f"Edit Error: {e}")
 
-            # Fallback to Send
+            # Fallback to Send New if Edit failed or no old ID
             if msg_id is None:
                 try:
                     m = await self.bot.send_message(
@@ -364,7 +495,15 @@ class TelegramManager:
                 new_ids.append(msg_id)
             await asyncio.sleep(0.5)
 
-        # 4. Save State
+        # 4. Handle Excess Messages (Do NOT delete as per user requirement)
+        # If the report shrank (e.g. 5 messages -> 1 message), we edit the first one.
+        # The remaining 4 are strictly LEFT ALONE, effectively showing stale data,
+        # but satisfying "not delete them if it gets updated".
+        # We must keep track of their IDs though? 
+        # Actually, if we don't save them to the file, the next run will ignore them.
+        # Logic: We only save 'new_ids' (the ones we just touched).
+        
+        # 5. Save State
         try:
             with open(Config.FILE_MSG_IDS, 'w') as f:
                 json.dump({"message_ids": new_ids, "updated": datetime.now().isoformat()}, f)
@@ -372,12 +511,8 @@ class TelegramManager:
         except Exception as e:
             logger.error(f"Save IDs failed: {e}")
 
-def get_ts_string():
-    # UTC+3
-    return datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=3))).strftime("%Y-%m-%d %H:%M:%S UTC+3")
-
 # -----------------------------------------------------------------------------
-# 7. Main Workflows
+# 8. Main Workflows
 # -----------------------------------------------------------------------------
 
 async def run_full_scan(clients: List[Any], tg: TelegramManager):
@@ -389,13 +524,9 @@ async def run_full_scan(clients: List[Any], tg: TelegramManager):
         raw_data[name] = await client.get_symbols()
 
     # 2. Prioritize Symbols
-    # Normalization helper
     def norm(s): return s.replace(":", "").replace("/", "")
-    
     tasks = [] # (Client, Symbol, Market)
     seen = set()
-    
-    # Priority Order
     order = [("Binance", 0, "perp"), ("Binance", 1, "spot"), ("Bybit", 0, "perp"), ("Bybit", 1, "spot")]
     client_map = {name: c for name, c in clients}
 
@@ -415,9 +546,7 @@ async def run_full_scan(clients: List[Any], tg: TelegramManager):
     levels = []
     low_movs = []
     
-    # Using semaphore inside HttpClient, so we can just launch tasks
     async def worker(client, s, m):
-        # Check all intervals
         for interval in ["1d", "1w", "1M"]:
             try:
                 candles = await client.get_candles(s, interval, m)
@@ -425,8 +554,8 @@ async def run_full_scan(clients: List[Any], tg: TelegramManager):
                 # Reversal Logic
                 p, t = analyze_reversal(candles)
                 if p:
-                    # Check if currently touched (Legacy logic: if touched, ignore?)
-                    # Legacy: "if equal_price ... and not current_candle_touched_price"
+                    # Legacy logic check: ensure current candle hasn't already invalidated/hit it?
+                    # "if equal_price ... and not current_candle_touched_price"
                     if not is_level_hit(candles, p):
                         levels.append(MarketLevel(client.__class__.__name__, s, m, interval, t, p, get_ts_string()))
                 
@@ -437,7 +566,7 @@ async def run_full_scan(clients: List[Any], tg: TelegramManager):
                         low_movs.append(LowMovResult(client.__class__.__name__, s, m, lm))
             except: pass
 
-    # Chunking tasks for progress updates
+    # Chunking
     chunk_sz = 1000
     for i in range(0, len(tasks), chunk_sz):
         await asyncio.gather(*(worker(*t) for t in tasks[i:i+chunk_sz]))
@@ -451,54 +580,17 @@ async def run_full_scan(clients: List[Any], tg: TelegramManager):
             "levels": {f"{l.exchange}_{l.symbol}_{l.interval}": asdict(l) for l in levels}
         }, f, indent=2)
 
-    # 5. Report Full Scan
-    # Build text...
-    report = []
-    # (Simplified text building for brevity, matches logic of previous script)
-    report.append(f"💥 *Reversal Level Scanner*\n\n✅ Total: {len(levels)}\n🕒 {get_ts_string()}")
+    # 5. Report Full Scan (Full formatting, New Messages)
+    full_report = build_full_scan_report(levels, low_movs)
+    await tg.send_smart_message(full_report, load_ids_from_file=False)
+
+    # 6. Reset Daily Hits & Init Alert Message
+    # Reset hits file for the new day
+    if Config.FILE_HITS.exists():
+        os.remove(Config.FILE_HITS)
     
-    # Group and format logic...
-    tree = {}
-    for l in levels:
-        if l.interval not in tree: tree[l.interval] = {"Binance": {}, "Bybit": {}}
-        d = tree[l.interval][l.exchange]
-        if l.signal_type not in d: d[l.signal_type] = []
-        d[l.signal_type].append(l.symbol)
-        
-    for iv in ["1M", "1w", "1d"]:
-        if iv not in tree: continue
-        sect = f"📅 *{iv} Timeframe*\n"
-        has_d = False
-        for ex in ["Binance", "Bybit"]:
-            d = tree[iv][ex]
-            if not d: continue
-            bull, bear = sorted(d.get("bullish", [])), sorted(d.get("bearish", []))
-            if bull or bear:
-                has_d = True
-                sect += f"\n*{ex}*:\n"
-                if bull: sect += f"🍏 *Bullish ({len(bull)})*\n" + "\n".join([f"• {x}" for x in bull]) + "\n"
-                if bear: sect += f"🔻 *Bearish ({len(bear)})*\n" + "\n".join([f"• {x}" for x in bear]) + "\n"
-        if has_d: 
-            sect += "——————————————————"
-            report.append(sect)
-            
-    # Add Low Mov
-    if low_movs:
-        low_movs.sort(key=lambda x: x.movement)
-        sect = "📉 *Low Movement Daily (<1.0%)*\n"
-        for ex in ["Binance", "Bybit"]:
-            lm = [x for x in low_movs if x.exchange == ex]
-            if lm:
-                sect += f"\n*{ex}*:\n" + "\n".join([f"• {x.symbol} ({x.movement:.2f}%)" for x in lm]) + "\n"
-        sect += "——————————————————"
-        report.append(sect)
-
-    # Send Full Report (False = Send New)
-    await tg.send_smart_message(report, load_ids_from_file=False)
-
-    # 6. Init Alert Message (False = Send New, then Save IDs)
-    # This prepares the file for the hourly checks
-    init_alert = [f"💥 *LEVEL ALERTS* 💥\n\n❌ No levels got hit at this time.\n\n🕒 {get_ts_string()}"]
+    # Send "No alerts" message and save ID for future edits
+    init_alert = build_alerts_report([])
     await tg.send_smart_message(init_alert, load_ids_from_file=False)
 
 
@@ -517,11 +609,16 @@ async def run_price_check(clients: List[Any], tg: TelegramManager):
     except:
         return
 
+    # Load Previous Hits (to append to them)
+    prev_hits = []
+    if Config.FILE_HITS.exists():
+        try:
+            with open(Config.FILE_HITS, 'r') as f:
+                prev_hits = [HitResult(**h) for h in json.load(f)]
+        except: pass
+
     # Check Levels
-    hits = []
-    # Group by symbol to minimize requests
-    # Key: (Exchange, Symbol, Market, Interval)
-    # Actually need to fetch candle per Symbol+Market+Interval
+    new_hits = []
     tasks = {}
     for l in levels:
         k = (l.exchange, l.symbol, l.market, l.interval)
@@ -539,45 +636,32 @@ async def run_price_check(clients: List[Any], tg: TelegramManager):
             
             for lvl in lvl_list:
                 if is_level_hit(candles, lvl.price):
-                    hits.append(HitResult(ex, sym, mkt, iv, lvl.signal_type, lvl.price, candles[0].close))
+                    # Unique ID for hit: Symbol + Interval + Price
+                    hid = f"{ex}_{sym}_{iv}_{lvl.price}"
+                    new_hits.append(HitResult(
+                        hid, ex, sym, mkt, iv, lvl.signal_type, lvl.price, 
+                        candles[0].close, get_ts_string()
+                    ))
         except: pass
 
     await asyncio.gather(*(checker(k, v) for k, v in tasks.items()))
 
-    # Build Report
-    ts = get_ts_string()
-    if not hits:
-        text = [f"💥 *LEVEL ALERTS* 💥\n\n❌ No levels got hit at this time.\n\n🕒 {ts}"]
-    else:
-        # Organize hits
-        text = [f"🚨 *LEVEL ALERTS* 🚨\n\n⚡ {len(hits)} levels hit!\n🕒 {ts}\n"]
-        tree = {}
-        for h in hits:
-            if h.interval not in tree: tree[h.interval] = {"Binance": {}, "Bybit": {}}
-            d = tree[h.interval][h.exchange]
-            if h.signal_type not in d: d[h.signal_type] = []
-            d[h.signal_type].append(h)
-            
-        for iv in ["1M", "1w", "1d"]:
-            if iv not in tree: continue
-            sect = f"📅 *{iv} Alerts*\n"
-            has_d = False
-            for ex in ["Binance", "Bybit"]:
-                d = tree[iv][ex]
-                if not d: continue
-                bull, bear = d.get("bullish", []), d.get("bearish", [])
-                if bull or bear:
-                    has_d = True
-                    sect += f"\n*{ex}*:\n"
-                    if bull: sect += f"🍏 *Bullish ({len(bull)})*\n" + "\n".join([f"• {h.symbol} @ ${h.level_price:.4f}" for h in bull]) + "\n"
-                    if bear: sect += f"🔻 *Bearish ({len(bear)})*\n" + "\n".join([f"• {h.symbol} @ ${h.level_price:.4f}" for h in bear]) + "\n"
-            if has_d:
-                sect += "——————————————————"
-                text.append(sect)
+    # Merge Hits (Deduplicate)
+    all_hits_map = {h.id: h for h in prev_hits}
+    for h in new_hits:
+        all_hits_map[h.id] = h # Update or add
+    
+    final_hits = list(all_hits_map.values())
+    
+    # Save Updated Hits
+    with open(Config.FILE_HITS, 'w') as f:
+        json.dump([asdict(h) for h in final_hits], f, indent=2)
 
-    # CRITICAL: load_ids_from_file=True
-    # This ensures we EDIT the message created by full_scan
-    await tg.send_smart_message(text, load_ids_from_file=True)
+    # Build Report (Full formatting)
+    report_text = build_alerts_report(final_hits)
+
+    # CRITICAL: load_ids_from_file=True to EDIT the previous message
+    await tg.send_smart_message(report_text, load_ids_from_file=True)
 
 
 async def main():
