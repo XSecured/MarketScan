@@ -483,7 +483,7 @@ class MarketScanBot:
             
             # Logic 2: Low Movement (Daily only)
             if interval == "1d":
-                lm = check_low_movement(candles, threshold_percent=2.5) # Original used 2.5 in main scan
+                lm = check_low_movement(candles, threshold_percent=1.0)
                 if lm is not None:
                     low_move = LowMovementHit(exchange, symbol, market, interval, lm)
                     
@@ -503,11 +503,16 @@ class MarketScanBot:
                 chunks.append(temp_chunk)
                 temp_chunk = ''
             temp_chunk += line
-        if temp_chunk.strip(): chunks.append(temp_chunk)
+        if temp_chunk.strip():
+            chunks.append(temp_chunk)
         
         for chunk in chunks:
             try:
-                m = await self.tg_bot.send_message(chat_id=CONFIG.CHAT_ID, text=chunk, parse_mode='Markdown')
+                m = await self.tg_bot.send_message(
+                    chat_id=CONFIG.CHAT_ID,
+                    text=chunk,
+                    parse_mode='Markdown'
+                )
                 ids.append(m.message_id)
                 await asyncio.sleep(0.5)
             except Exception as e:
@@ -516,54 +521,54 @@ class MarketScanBot:
 
     async def send_or_update_alert_report(self, hits: List[LevelHit]):
         """Updates the pinned alert message or sends new one."""
-        timestamp = self.utc_now.astimezone(timezone(timedelta(hours=3))).strftime("%Y-%m-%d %H:%M:%S UTC+3")
+        timestamp = self.utc_now.astimezone(
+            timezone(timedelta(hours=3))
+        ).strftime("%Y-%m-%d %H:%M:%S UTC+3")
         
         if not hits:
-            text = f"💥 *LEVEL ALERTS* 💥
-
-❌ No levels got hit at this time."
+            text = (
+                f"💥 *LEVEL ALERTS* 💥\n\n"
+                f"❌ No levels got hit at this time."
+            )
         else:
-            text = f"🚨 *LEVEL ALERTS* 🚨
-
-⚡ {len(hits)} levels got hit!
-
-🕒 {timestamp}
-
-"
-            grouped = {} 
+            text = (
+                f"🚨 *LEVEL ALERTS* 🚨\n\n"
+                f"⚡ {len(hits)} levels got hit!\n\n"
+                f"🕒 {timestamp}\n\n"
+            )
+            grouped = {}
             for h in hits:
-                grouped.setdefault(h.interval, {}).setdefault(h.exchange, {}).setdefault(h.signal_type, []).append(h)
+                grouped.setdefault(h.interval, {}) \
+                       .setdefault(h.exchange, {}) \
+                       .setdefault(h.signal_type, []) \
+                       .append(h)
             
             for interval in ["1M", "1w", "1d"]:
-                if interval not in grouped: continue
-                text += f"📅 *{interval} Alerts*
-
-"
+                if interval not in grouped:
+                    continue
+                text += f"📅 *{interval} Alerts*\n\n"
+                
                 for ex in ["Binance", "Bybit"]:
                     data = grouped[interval].get(ex, {})
                     bull = data.get("bullish", [])
                     bear = data.get("bearish", [])
                     
                     if bull or bear:
-                        text += f"*{ex}*:
-"
+                        text += f"*{ex}*:\n"
+                        
                         if bull:
-                            text += f"🍏 *Bullish ({len(bull)})*
-"
-                            for i in bull: text += f"• {i.symbol} @ ${i.level_price:.6f}
-"
-                            text += "
-"
+                            text += f"🍏 *Bullish ({len(bull)})*\n"
+                            for i in bull:
+                                text += f"• {i.symbol} @ ${i.level_price:.6f}\n"
+                            text += "\n"
+                        
                         if bear:
-                            text += f"🔻 *Bearish ({len(bear)})*
-"
-                            for i in bear: text += f"• {i.symbol} @ ${i.level_price:.6f}
-"
-                            text += "
-"
-                text += "——————————————————
-
-"
+                            text += f"🔻 *Bearish ({len(bear)})*\n"
+                            for i in bear:
+                                text += f"• {i.symbol} @ ${i.level_price:.6f}\n"
+                            text += "\n"
+                
+                text += "——————————————————\n\n"
 
         # Message ID management
         prev_ids = load_message_ids()
@@ -576,21 +581,31 @@ class MarketScanBot:
                 chunks.append(temp_chunk)
                 temp_chunk = ''
             temp_chunk += line
-        if temp_chunk.strip(): chunks.append(temp_chunk)
+        if temp_chunk.strip():
+            chunks.append(temp_chunk)
         
         # Update or Send
         for idx, chunk in enumerate(chunks):
             if idx < len(prev_ids):
                 try:
-                    await self.tg_bot.edit_message_text(chat_id=CONFIG.CHAT_ID, message_id=prev_ids[idx], text=chunk, parse_mode='Markdown')
+                    await self.tg_bot.edit_message_text(
+                        chat_id=CONFIG.CHAT_ID,
+                        message_id=prev_ids[idx],
+                        text=chunk,
+                        parse_mode='Markdown'
+                    )
                     new_ids.append(prev_ids[idx])
                     continue
                 except Exception:
-                    pass # Fallback to send if edit fails
+                    pass  # fallback to send
             
             # If no prev ID or edit failed
             try:
-                m = await self.tg_bot.send_message(chat_id=CONFIG.CHAT_ID, text=chunk, parse_mode='Markdown')
+                m = await self.tg_bot.send_message(
+                    chat_id=CONFIG.CHAT_ID,
+                    text=chunk,
+                    parse_mode='Markdown'
+                )
                 new_ids.append(m.message_id)
             except Exception as e:
                 logging.error(f"TG Send Error: {e}")
@@ -598,92 +613,91 @@ class MarketScanBot:
         save_message_ids(new_ids)
 
     async def send_full_report(self, results: List[LevelHit], low_movements: List[LowMovementHit]):
-        timestamp = self.utc_now.astimezone(timezone(timedelta(hours=3))).strftime("%Y-%m-%d %H:%M:%S UTC+3")
+        timestamp = self.utc_now.astimezone(
+            timezone(timedelta(hours=3))
+        ).strftime("%Y-%m-%d %H:%M:%S UTC+3")
         
         # 1. Summary Section
         binance_count = len([r for r in results if r.exchange == "Binance"])
         bybit_count = len([r for r in results if r.exchange == "Bybit"])
         
-        summary = f"💥 *Reversal Level Scanner*
-
-"
-        summary += f"✅ Total Reversal Signals: {len(results)}
-"
-        summary += f"*Binance*: {binance_count} | *Bybit*: {bybit_count}
-
-"
-        summary += f"🕒 {timestamp}"
+        summary = (
+            f"💥 *Reversal Level Scanner*\n\n"
+            f"✅ Total Reversal Signals: {len(results)}\n"
+            f"*Binance*: {binance_count} | *Bybit*: {bybit_count}\n\n"
+            f"🕒 {timestamp}"
+        )
         await self.send_chunks(summary)
         
         # 2. Reversal Sections
         grouped = {}
         for r in results:
-            grouped.setdefault(r.interval, {}).setdefault(r.exchange, {}).setdefault(r.signal_type, []).append(r.symbol)
+            grouped.setdefault(r.interval, {}) \
+                   .setdefault(r.exchange, {}) \
+                   .setdefault(r.signal_type, []) \
+                   .append(r.symbol)
             
         for tf in ["1M", "1w", "1d"]:
-            if tf not in grouped: continue
-            msg = f"📅 *{tf} Timeframe* ({sum(len(grouped[tf][e][t]) for e in grouped[tf] for t in grouped[tf][e])} signals)
-
-"
+            if tf not in grouped:
+                continue
+            
+            total = sum(
+                len(grouped[tf][e][t])
+                for e in grouped[tf]
+                for t in grouped[tf][e]
+            )
+            
+            msg = f"📅 *{tf} Timeframe* ({total} signals)\n\n"
             has_data = False
+            
             for ex in ["Binance", "Bybit"]:
                 bull = sorted(grouped[tf].get(ex, {}).get("bullish", []))
                 bear = sorted(grouped[tf].get(ex, {}).get("bearish", []))
                 
                 if bull or bear:
                     has_data = True
-                    msg += f"*{ex}*:
-"
-                    if bull: 
-                        msg += f"🍏 *Bullish ({len(bull)})*
-"
-                        for s in bull: msg += f"• {s}
-"
-                        msg += "
-"
-                    if bear: 
-                        msg += f"🔻 *Bearish ({len(bear)})*
-"
-                        for s in bear: msg += f"• {s}
-"
-                        msg += "
-"
-                    msg += "——————————————————
-
-"
+                    msg += f"*{ex}*:\n"
+                    
+                    if bull:
+                        msg += f"🍏 *Bullish ({len(bull)})*\n"
+                        for s in bull:
+                            msg += f"• {s}\n"
+                        msg += "\n"
+                    
+                    if bear:
+                        msg += f"🔻 *Bearish ({len(bear)})*\n"
+                        for s in bear:
+                            msg += f"• {s}\n"
+                        msg += "\n"
+                    
+                    msg += "——————————————————\n\n"
             
-            if has_data: 
+            if has_data:
                 await self.send_chunks(msg)
 
         # 3. Low Movement Section
         if low_movements:
             low_movements.sort(key=lambda x: x.movement_percent)
-            msg = "📉 *Low Movement Daily Candles (<1.0%)*
-
-" # Original text check
+            
+            msg = "📉 *Low Movement Daily Candles (<1.0%)*\n\n"
             
             b_low = [x for x in low_movements if x.exchange == 'Binance']
             y_low = [x for x in low_movements if x.exchange == 'Bybit']
             
             if b_low:
-                msg += "*Binance*:
-"
-                for x in b_low: msg += f"• {x.symbol} ({x.movement_percent:.2f}%)
-"
-                msg += "
-"
+                msg += "*Binance*:\n"
+                for x in b_low:
+                    msg += f"• {x.symbol} ({x.movement_percent:.2f}%)\n"
+                msg += "\n"
                 
             if y_low:
-                msg += "*Bybit*:
-"
-                for x in y_low: msg += f"• {x.symbol} ({x.movement_percent:.2f}%)
-"
-                msg += "
-"
+                msg += "*Bybit*:\n"
+                for x in y_low:
+                    msg += f"• {x.symbol} ({x.movement_percent:.2f}%)\n"
+                msg += "\n"
             
-            msg += "——————————————————
-
-"
+            msg += "——————————————————\n\n"
+            
             await self.send_chunks(msg)
 
 if __name__ == "__main__":
