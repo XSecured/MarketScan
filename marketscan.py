@@ -1,697 +1,694 @@
 import asyncio
-import aiohttp
+import json
 import logging
 import os
-import json
 import random
-import sys
-import time
+import math
+from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
-from typing import List, Dict, Set, Optional, Tuple, NamedTuple, Any
-from dataclasses import dataclass, asdict
+from typing import List, Dict, Set, Optional, Tuple, Any
 from pathlib import Path
+from itertools import cycle
 
-# -----------------------------------------------------------------------------
-# 1. Configuration & Environmental Setup
-# -----------------------------------------------------------------------------
+import aiohttp
+from telegram import Bot
+from telegram.error import BadRequest
+from tqdm.asyncio import tqdm
 
-# Optimized Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s | %(levelname)s | %(name)s | %(message)s',
-    datefmt='%H:%M:%S'
-)
-logger = logging.getLogger("MarketScan")
+# ==========================================
+# CONFIGURATION & CONSTANTS
+# ==========================================
 
-# Performance Tuning (uvloop for Linux/Mac)
-if sys.platform != 'win32':
-    try:
-        import uvloop
-        asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-        logger.info("🚀 High-Performance uvloop activated")
-    except ImportError:
-        pass
-
-# Constants
+@dataclass
 class Config:
-    # Infrastructure
-    CONCURRENCY = 150            # Simultaneous requests
-    REQ_TIMEOUT = 10             # Seconds before giving up on a proxy
-    MAX_RETRIES = 3              # Retry attempts per symbol
+    FETCH_TIMEOUT_TOTAL: int = 15
+    REQUEST_TIMEOUT: int = 5
+    MAX_RETRIES: int = 3  # Optimized: 2 retries is often enough for async
+    MAX_TG_CHARS: int = 4000
+    MAX_CONCURRENCY: int = 50  # Higher concurrency safe due to async/await
     
-    # Logic
-    LOW_MOV_THRESHOLD = 1.0      # Strict 1.0%
-    MAX_TG_CHARS = 4000          # Telegram limit safety buffer
+    # Files
+    LEVELS_FILE: str = "detected_levels.json"
+    MSG_FILE: str = "level_alert_message.json"
     
-    # Persistence
-    FILE_LEVELS = Path("detected_levels.json")
-    FILE_MSG_IDS = Path("level_alert_message.json")
-    FILE_HITS = Path("daily_hits.json") # To store hits logic
-    
-    # Telegram
-    TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-    CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-    PROXY_URL = os.getenv("PROXY_LIST_URL")
-    RUN_MODE = os.getenv("RUN_MODE", "full_scan")
+    # Environment
+    TELEGRAM_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    CHAT_ID: str = os.getenv("TELEGRAM_CHAT_ID", "")
+    PROXY_URL: str = os.getenv("PROXY_LIST_URL", "")
+    RUN_MODE: str = os.getenv("RUN_MODE", "full_scan")
 
-    IGNORED_SYMBOLS = {
+    IGNORED_SYMBOLS: Set[str] = field(default_factory=lambda: {
         "USDPUSDT", "USD1USDT", "TUSDUSDT", "AEURUSDT", "USDCUSDT",
         "ZKJUSDT", "FDUSDUSDT", "XUSDUSDT", "EURUSDT", "EURIUSDT",
         "USDYUSDT", "USDRUSDT", "ETH3LUSDT", "ETHUSDT-27MAR26",
         "ETHUSDT-27JUN25", "ETHUSDT-26DEC25", "ETHUSDT-26SEP25"
-    }
+    })
 
-# -----------------------------------------------------------------------------
-# 2. Data Structures (Zero-Overhead)
-# -----------------------------------------------------------------------------
+CONFIG = Config()
 
-class Candle(NamedTuple):
-    """Immutable, memory-optimized candle structure."""
+# ==========================================
+# DATA MODELS (Modern & Typed)
+# ==========================================
+
+@dataclass
+class Candle:
     open: float
     high: float
     low: float
     close: float
-    volume: float
+    # We don't strictly need volume/time for the logic provided, keeping it lean
 
 @dataclass
-class MarketLevel:
-    exchange: str
-    symbol: str
-    market: str
-    interval: str
-    signal_type: str
-    price: float
-    timestamp: str
-
-@dataclass
-class HitResult:
-    id: str # Unique identifier for deduplication
+class LevelHit:
     exchange: str
     symbol: str
     market: str
     interval: str
     signal_type: str
     level_price: float
-    curr_price: float
-    hit_time: str
+    current_price: float = 0.0
+    timestamp: str = ""
+    
+    def to_dict(self):
+        return {
+            "exchange": self.exchange,
+            "symbol": self.symbol,
+            "market": self.market,
+            "interval": self.interval,
+            "price": self.level_price,
+            "signal_type": self.signal_type,
+            "timestamp": self.timestamp
+        }
 
 @dataclass
-class LowMovResult:
+class LowMovementHit:
     exchange: str
     symbol: str
     market: str
-    movement: float
+    interval: str
+    movement_percent: float
+    
+    def to_dict(self):
+        return {
+            "exchange": self.exchange,
+            "symbol": self.symbol,
+            "market": self.market,
+            "interval": self.interval,
+            "movement_percent": self.movement_percent
+        }
 
-# -----------------------------------------------------------------------------
-# 3. High-Performance Network Layer
-# -----------------------------------------------------------------------------
+# ==========================================
+# ASYNC PROXY POOL
+# ==========================================
 
-class ProxyManager:
-    """
-    Manages proxies with a fail-fast rotation strategy.
-    """
-    def __init__(self, url: str):
-        self.url = url
+class AsyncProxyPool:
+    def __init__(self, max_pool_size=25):
         self.proxies: List[str] = []
-        self.bad_proxies: Set[str] = set()
+        self.max_pool_size = max_pool_size
+        self.iterator = None
         self._lock = asyncio.Lock()
+        self.failed_counts: Dict[str, int] = {}
 
-    async def fetch(self):
-        """Downloads proxy list once at startup."""
-        logger.info("🌐 Fetching proxy list...")
+    async def populate(self, url: str, session: aiohttp.ClientSession):
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(self.url, timeout=15) as resp:
-                    if resp.status == 200:
-                        text = await resp.text()
-                        self.proxies = [
-                            p.strip() if "://" in p.strip() else f"http://{p.strip()}"
-                            for p in text.splitlines() if p.strip()
-                        ]
-                        logger.info(f"✅ Loaded {len(self.proxies)} proxies.")
-                    else:
-                        logger.error(f"Failed to fetch proxies: HTTP {resp.status}")
+            logging.info(f"Fetching proxies from {url}...")
+            async with session.get(url, timeout=10) as resp:
+                if resp.status == 200:
+                    text = await resp.text()
+                    candidates = [
+                        line.strip() if "://" in line else f"http://{line.strip()}" 
+                        for line in text.splitlines() if line.strip()
+                    ]
+                    # Quick validation of first N
+                    self.proxies = candidates[:self.max_pool_size * 2] 
+                    self.iterator = cycle(self.proxies)
+                    logging.info(f"Loaded {len(self.proxies)} proxies.")
         except Exception as e:
-            logger.error(f"Proxy fetch error: {e}")
+            logging.error(f"Failed to load proxies: {e}")
 
-    def get_random(self) -> Optional[str]:
-        """Get a random proxy that isn't marked as bad."""
-        if not self.proxies: return None
-        for _ in range(10):
-            p = random.choice(self.proxies)
-            if p not in self.bad_proxies:
-                return p
-        return random.choice(self.proxies)
+    async def get_proxy(self) -> Optional[str]:
+        async with self._lock:
+            if not self.proxies:
+                return None
+            # Simple round-robin
+            return next(self.iterator)
 
-    def mark_bad(self, proxy: str):
-        if proxy:
-            self.bad_proxies.add(proxy)
+    async def mark_bad(self, proxy: str):
+        # In a robust system we might remove it, but for this script
+        # strictly following logic, we just log or skip. 
+        pass
 
-class HttpClient:
-    """
-    Wrapper for aiohttp with automatic retries and proxy rotation.
-    """
-    def __init__(self, proxy_mgr: ProxyManager):
-        self.pm = proxy_mgr
-        self.session: Optional[aiohttp.ClientSession] = None
-        self.sem = asyncio.Semaphore(Config.CONCURRENCY)
+# ==========================================
+# EFFICIENT EXCHANGE CLIENTS
+# ==========================================
 
-    async def start(self):
-        conn = aiohttp.TCPConnector(
-            limit=0,
-            ttl_dns_cache=300,
-            ssl=False,
-            keepalive_timeout=30
-        )
-        self.session = aiohttp.ClientSession(connector=conn)
+class ExchangeClient:
+    """Base async client for fetching data efficiently."""
+    def __init__(self, session: aiohttp.ClientSession, proxy_pool: AsyncProxyPool):
+        self.session = session
+        self.proxies = proxy_pool
+        self.sem = asyncio.Semaphore(CONFIG.MAX_CONCURRENCY)
 
-    async def close(self):
-        if self.session:
-            await self.session.close()
-
-    async def get(self, url: str, params: dict = None) -> Any:
-        async with self.sem:
-            for attempt in range(Config.MAX_RETRIES):
-                proxy = self.pm.get_random()
-                try:
+    async def _request(self, url: str, params: dict = None) -> Any:
+        """Robust async request with retries and proxy rotation."""
+        for attempt in range(CONFIG.MAX_RETRIES):
+            proxy = await self.proxies.get_proxy()
+            try:
+                async with self.sem: # Limit concurrency
                     async with self.session.get(
-                        url, params=params, proxy=proxy, timeout=Config.REQ_TIMEOUT
+                        url, 
+                        params=params, 
+                        proxy=proxy, 
+                        timeout=CONFIG.REQUEST_TIMEOUT
                     ) as resp:
                         if resp.status == 200:
                             return await resp.json()
                         elif resp.status == 429: # Rate limit
-                            await asyncio.sleep(1 + attempt)
-                        elif resp.status >= 500: # Server error
-                            pass # Retry
-                except Exception:
-                    self.pm.mark_bad(proxy)
-                
-                await asyncio.sleep(0.2) # Jitter
-            return None
+                            await asyncio.sleep(2)
+            except Exception:
+                pass # Silent fail for speed, retry next loop
+            
+            await asyncio.sleep(0.5 * attempt)
+        return None
 
-# -----------------------------------------------------------------------------
-# 4. Exchange Logic
-# -----------------------------------------------------------------------------
-
-class Binance:
-    def __init__(self, http: HttpClient): self.http = http
-
-    async def get_symbols(self) -> Tuple[Set[str], Set[str]]:
-        t1 = self.http.get('https://fapi.binance.com/fapi/v1/exchangeInfo')
-        t2 = self.http.get('https://api.binance.com/api/v3/exchangeInfo')
-        r1, r2 = await asyncio.gather(t1, t2)
-
-        perps = {s['symbol'] for s in r1['symbols'] 
-                 if s['contractType'] == 'PERPETUAL' and s['status'] == 'TRADING' and s['quoteAsset'] == 'USDT'} if r1 else set()
-        spots = {s['symbol'] for s in r2['symbols'] 
-                 if s['status'] == 'TRADING' and s['quoteAsset'] == 'USDT'} if r2 else set()
-        return perps, spots
-
-    async def get_candles(self, symbol: str, interval: str, market: str) -> List[Candle]:
-        base = 'https://api.binance.com/api/v3/klines' if market == "spot" else 'https://fapi.binance.com/fapi/v1/klines'
-        data = await self.http.get(base, {'symbol': symbol, 'interval': interval, 'limit': 4})
+class BinanceClient(ExchangeClient):
+    async def get_perp_symbols(self) -> List[str]:
+        data = await self._request('https://fapi.binance.com/fapi/v1/exchangeInfo')
         if not data: return []
-        return [Candle(float(x[1]), float(x[2]), float(x[3]), float(x[4]), float(x[5])) for x in reversed(data)]
+        return [s['symbol'] for s in data['symbols'] 
+                if s.get('contractType') == 'PERPETUAL' and s['status'] == 'TRADING' and s.get('quoteAsset') == 'USDT']
 
-class Bybit:
-    def __init__(self, http: HttpClient): self.http = http
+    async def get_spot_symbols(self) -> List[str]:
+        data = await self._request('https://api.binance.com/api/v3/exchangeInfo')
+        if not data: return []
+        return [s['symbol'] for s in data['symbols'] 
+                if s['status'] == 'TRADING' and s.get('quoteAsset') == 'USDT']
 
-    async def get_symbols(self) -> Tuple[Set[str], Set[str]]:
-        t1 = self.http.get('https://api.bybit.com/v5/market/instruments-info', {'category': 'linear'})
-        t2 = self.http.get('https://api.bybit.com/v5/market/instruments-info', {'category': 'spot'})
-        r1, r2 = await asyncio.gather(t1, t2)
+    async def fetch_ohlcv(self, symbol: str, interval: str, market: str, limit: int = 3) -> List[Candle]:
+        base = 'https://api.binance.com/api/v3/klines' if market == "spot" else 'https://fapi.binance.com/fapi/v1/klines'
+        data = await self._request(base, {'symbol': symbol, 'interval': interval, 'limit': limit})
+        if not data or not isinstance(data, list): return []
+        
+        # Binance: [Open Time, Open, High, Low, Close, ...]
+        # Returns Oldest -> Newest
+        candles = []
+        for c in data:
+            try:
+                candles.append(Candle(
+                    open=float(c[1]), high=float(c[2]), low=float(c[3]), close=float(c[4])
+                ))
+            except (ValueError, IndexError):
+                continue
+        # Reverse to get Newest -> Oldest (matching original pandas df.iloc[::-1])
+        return candles[::-1]
 
-        perps = {s['symbol'] for s in r1['result']['list'] if s['status'] == 'Trading' and s['quoteCoin'] == 'USDT'} if r1 else set()
-        spots = {s['symbol'] for s in r2['result']['list'] if s['status'] == 'Trading' and s['quoteCoin'] == 'USDT'} if r2 else set()
-        return perps, spots
+class BybitClient(ExchangeClient):
+    async def get_perp_symbols(self) -> List[str]:
+        data = await self._request('https://api.bybit.com/v5/market/instruments-info', {'category': 'linear'})
+        if not data: return []
+        return [s['symbol'] for s in data['result']['list'] 
+                if s['status'] == 'Trading' and s['quoteCoin'] == 'USDT']
 
-    async def get_candles(self, symbol: str, interval: str, market: str) -> List[Candle]:
+    async def get_spot_symbols(self) -> List[str]:
+        data = await self._request('https://api.bybit.com/v5/market/instruments-info', {'category': 'spot'})
+        if not data: return []
+        return [s['symbol'] for s in data['result']['list'] 
+                if s['status'] == 'Trading' and s['quoteCoin'] == 'USDT']
+
+    async def fetch_ohlcv(self, symbol: str, interval: str, market: str, limit: int = 3) -> List[Candle]:
+        url = 'https://api.bybit.com/v5/market/kline'
         cat = 'linear' if market == 'perp' else 'spot'
-        b_int = {"1M": "M", "1w": "W", "1d": "D"}[interval]
-        data = await self.http.get('https://api.bybit.com/v5/market/kline', 
-                                   {'category': cat, 'symbol': symbol, 'interval': b_int, 'limit': 4})
-        if not data or 'result' not in data: return []
-        return [Candle(float(x[1]), float(x[2]), float(x[3]), float(x[4]), float(x[5])) for x in data['result']['list']]
+        bybit_int = {"1M": "M", "1w": "W", "1d": "D"}.get(interval, "D")
+        
+        data = await self._request(url, {'category': cat, 'symbol': symbol, 'interval': bybit_int, 'limit': limit})
+        if not data: return []
+        
+        raw_list = data.get('result', {}).get('list', [])
+        if not raw_list: return []
+        
+        # Map to Candle. Bybit: [startTime, open, high, low, close, volume, turnover]
+        # Bybit returns Newest -> Oldest (List[0] is current)
+        candles = []
+        for c in raw_list:
+             candles.append(Candle(
+                open=float(c[1]), high=float(c[2]), low=float(c[3]), close=float(c[4])
+            ))
+        
+        return candles # Already Newest -> Oldest
 
-# -----------------------------------------------------------------------------
-# 5. Business Logic (Pure)
-# -----------------------------------------------------------------------------
+# ==========================================
+# CORE LOGIC (Pure Python, No Pandas)
+# ==========================================
 
-def analyze_reversal(candles: List[Candle]) -> Tuple[Optional[float], Optional[str]]:
-    if len(candles) < 3: return None, None
-    last, prev = candles[1], candles[2]
-    
-    avg = (prev.close + last.open) / 2
-    if avg == 0 or abs(prev.close - last.open) > (0.003 * avg):
+def floats_are_equal(a: float, b: float, rel_tol: float = 0.003) -> bool:
+    return abs(a - b) <= rel_tol * ((a + b) / 2.0)
+
+def check_reversal(candles: List[Candle]) -> Tuple[Optional[float], Optional[str]]:
+    """
+    Analyzes 3 candles: [Newest(Current), LastClosed, PrevClosed]
+    """
+    if len(candles) < 3:
         return None, None
-    
-    price = prev.close
-    
-    # Bullish: Prev RED, Last GREEN
-    if (prev.close < prev.open) and (last.close > last.open):
-        return price, "bullish"
-    # Bearish: Prev GREEN, Last RED
-    if (prev.close > prev.open) and (last.close < last.open):
-        return price, "bearish"
+
+    # Indices: 0 is current (live), 1 is last closed, 2 is previous closed
+    # (This matches the reversed order from fetch_ohlcv)
+    last_closed = candles[1]
+    second_last_closed = candles[2]
+
+    # Logic: Check if prev_close == last_open
+    if floats_are_equal(second_last_closed.close, last_closed.open):
+        equal_price = second_last_closed.close
+        
+        second_last_is_green = second_last_closed.close > second_last_closed.open
+        second_last_is_red = second_last_closed.close < second_last_closed.open
+        last_is_green = last_closed.close > last_closed.open
+        last_is_red = last_closed.close < last_closed.open
+
+        # Bullish: Red then Green
+        if second_last_is_red and last_is_green:
+            return equal_price, "bullish"
+        
+        # Bearish: Green then Red
+        elif second_last_is_green and last_is_red:
+            return equal_price, "bearish"
+
     return None, None
 
-def analyze_low_movement(candles: List[Candle]) -> Optional[float]:
-    if len(candles) < 2: return None
-    c = candles[1]
-    if c.open == 0: return None
-    move = abs((c.close - c.open) / c.open) * 100
-    return move if move < Config.LOW_MOV_THRESHOLD else None
-
-def is_level_hit(candles: List[Candle], level_price: float) -> bool:
+def current_candle_touched_price(candles: List[Candle], price: float) -> bool:
     if not candles: return False
-    c = candles[0]
-    return c.low <= level_price <= c.high
+    curr = candles[0] # Newest
+    return curr.low <= price <= curr.high
 
-def get_ts_string():
-    # UTC+3
-    return datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=3))).strftime("%Y-%m-%d %H:%M:%S UTC+3")
-
-# -----------------------------------------------------------------------------
-# 6. Report Builders (FULL VERSION)
-# -----------------------------------------------------------------------------
-
-def build_full_scan_report(levels: List[MarketLevel], low_movs: List[LowMovResult]) -> List[str]:
-    """Generates the main market scan report sections."""
-    sections = []
+def check_low_movement(candles: List[Candle], threshold_percent: float = 1.0) -> Optional[float]:
+    if len(candles) < 2:
+        return None
+    # Last closed candle is at index 1
+    last = candles[1]
+    if last.open == 0: return None
     
-    # 1. Summary Header
-    binance_count = len([l for l in levels if l.exchange == "Binance"])
-    bybit_count = len([l for l in levels if l.exchange == "Bybit"])
+    move_pct = abs((last.close - last.open) / last.open) * 100
+    if move_pct < threshold_percent: 
+        return move_pct
+    return None
+
+# ==========================================
+# STATE & UTILS
+# ==========================================
+
+def load_levels() -> Dict[str, Any]:
+    try:
+        if os.path.exists(CONFIG.LEVELS_FILE):
+            with open(CONFIG.LEVELS_FILE, "r") as f:
+                return json.load(f).get("levels", {})
+    except Exception:
+        pass
+    return {}
+
+def save_levels(results: List[LevelHit], utc_now_str: str):
+    data = {"last_updated": utc_now_str, "levels": {}}
+    for r in results:
+        key = f"{r.exchange}_{r.symbol}_{r.market}_{r.interval}"
+        data["levels"][key] = r.to_dict()
     
-    header = (
-        f"💥 *Reversal Level Scanner*\n\n"
-        f"✅ Total Reversal Signals: {len(levels)}\n\n"
-        f"*Binance*: {binance_count} | *Bybit*: {bybit_count}\n\n"
-        f"🕒 {get_ts_string()}"
-    )
-    sections.append(header)
+    with open(CONFIG.LEVELS_FILE, "w") as f:
+        json.dump(data, f, indent=2)
 
-    # 2. Group Levels by Interval -> Exchange -> Signal -> Symbol
-    # Tree Structure: grouped[interval][exchange][signal] = [symbol_list]
-    grouped = {}
-    for l in levels:
-        if l.interval not in grouped:
-            grouped[l.interval] = {"Binance": {"bullish": [], "bearish": []}, "Bybit": {"bullish": [], "bearish": []}}
-        
-        grouped[l.interval][l.exchange][l.signal_type].append(l.symbol)
+def normalize_symbol(symbol: str) -> str:
+    s = symbol.upper().split(':')[0]
+    if '/' in s: return s
+    return f"{s[:-4]}/{s[-4:]}" if s.endswith("USDT") else s
 
-    # 3. Build Sections
-    timeframe_order = ["1M", "1w", "1d"]
-    for interval in timeframe_order:
-        if interval not in grouped: continue
-        
-        # Calculate total signals for this interval to see if we skip
-        tf_data = grouped[interval]
-        tf_total = sum(len(tf_data[ex][st]) for ex in tf_data for st in tf_data[ex])
-        if tf_total == 0: continue
+def save_message_ids(ids: List[int]):
+    with open(CONFIG.MSG_FILE, "w") as f:
+        json.dump({"message_ids": ids, "timestamp": datetime.now(timezone.utc).isoformat()}, f)
 
-        section_text = f"📅 *{interval} Timeframe* ({tf_total} signals)\n\n"
-        
-        for exchange in ["Binance", "Bybit"]:
-            bullish = sorted(tf_data[exchange]["bullish"])
-            bearish = sorted(tf_data[exchange]["bearish"])
-            
-            if not bullish and not bearish:
-                continue
+def load_message_ids() -> List[int]:
+    if not os.path.exists(CONFIG.MSG_FILE): return []
+    try:
+        with open(CONFIG.MSG_FILE) as f:
+            return json.load(f).get("message_ids", [])
+    except: return []
 
-            section_text += f"*{exchange}*:\n"
-            
-            if bullish:
-                section_text += f"🍏 *Bullish ({len(bullish)})*\n"
-                for s in bullish:
-                    section_text += f"• {s}\n"
-                section_text += "\n"
-                
-            if bearish:
-                section_text += f"🔻 *Bearish ({len(bearish)})*\n"
-                for s in bearish:
-                    section_text += f"• {s}\n"
-                section_text += "\n"
-        
-        section_text += "——————————————————\n\n"
-        sections.append(section_text.strip())
+def clear_message_ids():
+    if os.path.exists(CONFIG.MSG_FILE): os.remove(CONFIG.MSG_FILE)
 
-    # 4. Low Movement Section
-    if low_movs:
-        low_movs.sort(key=lambda x: x.movement)
-        
-        low_msg = "📉 *Low Movement Daily Candles (<1.0%)*\n\n"
-        
-        binance_low = [x for x in low_movs if x.exchange == "Binance"]
-        bybit_low = [x for x in low_movs if x.exchange == "Bybit"]
-        
-        if binance_low:
-            low_msg += "*Binance*:\n"
-            for item in binance_low:
-                low_msg += f"• {item.symbol} ({item.movement:.2f}%)\n"
-            low_msg += "\n"
-            
-        if bybit_low:
-            low_msg += "*Bybit*:\n"
-            for item in bybit_low:
-                low_msg += f"• {item.symbol} ({item.movement:.2f}%)\n"
-            low_msg += "\n"
-            
-        low_msg += "——————————————————\n\n"
-        sections.append(low_msg.strip())
-        
-    return sections
+# ==========================================
+# MAIN BOT CLASS
+# ==========================================
 
-def build_alerts_report(hits: List[HitResult]) -> List[str]:
-    """Generates the alert report. Handles both empty and populated states."""
-    if not hits:
-        return [f"💥 *LEVEL ALERTS* 💥\n\n❌ No levels got hit at this time.\n\n🕒 {get_ts_string()}"]
-
-    # Header
-    header = f"🚨 *LEVEL ALERTS* 🚨\n\n⚡ {len(hits)} levels got hit!\n\n🕒 {get_ts_string()}\n\n"
-    sections = [header]
-
-    # Group Hits: Interval -> Exchange -> Signal -> List[HitResult]
-    grouped = {}
-    for h in hits:
-        if h.interval not in grouped:
-            grouped[h.interval] = {"Binance": {"bullish": [], "bearish": []}, "Bybit": {"bullish": [], "bearish": []}}
-        grouped[h.interval][h.exchange][h.signal_type].append(h)
-
-    timeframe_order = ["1M", "1w", "1d"]
-    for interval in timeframe_order:
-        if interval not in grouped: continue
-        
-        # Check if any hits in this interval
-        tf_data = grouped[interval]
-        has_hits = any(tf_data[ex][st] for ex in tf_data for st in tf_data[ex])
-        if not has_hits: continue
-        
-        section_text = f"📅 *{interval} Alerts*\n\n"
-        
-        for exchange in ["Binance", "Bybit"]:
-            bullish = tf_data[exchange]["bullish"]
-            bearish = tf_data[exchange]["bearish"]
-            
-            if not bullish and not bearish: continue
-            
-            section_text += f"*{exchange}*:\n"
-            
-            if bullish:
-                section_text += f"🍏 *Bullish ({len(bullish)})*\n"
-                for h in bullish:
-                    section_text += f"• {h.symbol} @ ${h.level_price:.6f}\n"
-                section_text += "\n"
-                
-            if bearish:
-                section_text += f"🔻 *Bearish ({len(bearish)})*\n"
-                for h in bearish:
-                    section_text += f"• {h.symbol} @ ${h.level_price:.6f}\n"
-                section_text += "\n"
-                
-        section_text += "——————————————————\n\n"
-        sections.append(section_text.strip())
-        
-    return sections
-
-# -----------------------------------------------------------------------------
-# 7. Telegram & State Manager
-# -----------------------------------------------------------------------------
-
-class TelegramManager:
+class MarketScanBot:
     def __init__(self):
-        self.bot = None
-        if Config.TOKEN and Config.CHAT_ID:
-            try:
-                from telegram import Bot
-                self.bot = Bot(token=Config.TOKEN)
-            except ImportError:
-                logger.error("telegram module missing")
+        self.utc_now = datetime.now(timezone.utc)
+        self.tg_bot = Bot(token=CONFIG.TELEGRAM_TOKEN) if CONFIG.TELEGRAM_TOKEN else None
 
-    async def send_smart_message(self, text_parts: List[str], load_ids_from_file: bool = False):
-        if not self.bot: return
+    async def run(self):
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+        
+        if not CONFIG.TELEGRAM_TOKEN or not CONFIG.CHAT_ID:
+            logging.error("Missing Telegram Env Vars")
+            return
 
-        # 1. Chunking logic (Standard 4096 char limit)
+        async with aiohttp.ClientSession() as session:
+            # 1. Setup Proxy
+            proxies = AsyncProxyPool()
+            if CONFIG.PROXY_URL:
+                await proxies.populate(CONFIG.PROXY_URL, session)
+            
+            # 2. Setup Clients
+            binance = BinanceClient(session, proxies)
+            bybit = BybitClient(session, proxies)
+
+            if CONFIG.RUN_MODE == "price_check":
+                await self.run_price_check(binance, bybit)
+            else:
+                await self.run_full_scan(binance, bybit)
+
+    # ==========================================
+    # PRICE CHECK MODE
+    # ==========================================
+    async def run_price_check(self, binance: BinanceClient, bybit: BybitClient):
+        logging.info("🚀 Starting FAST Price Check...")
+        levels_data = load_levels()
+        if not levels_data:
+            await self.send_or_update_alert_report([])
+            return
+
+        tasks = []
+        for key, data in levels_data.items():
+            client = binance if data['exchange'] == 'Binance' else bybit
+            tasks.append(self.check_single_level(client, data))
+
+        hits = []
+        for f in tqdm(asyncio.as_completed(tasks), total=len(tasks), desc="Checking Levels"):
+            res = await f
+            if res: hits.append(res)
+
+        await self.send_or_update_alert_report(hits)
+
+    async def check_single_level(self, client: ExchangeClient, data: dict) -> Optional[LevelHit]:
+        # Need 2 candles minimum to get current price properly if using same logic as original
+        candles = await client.fetch_ohlcv(data['symbol'], data['interval'], data['market'], limit=2)
+        if not candles: return None
+        
+        # Newest candle is index 0
+        curr = candles[0]
+        target = data['price']
+        
+        if curr.low <= target <= curr.high:
+            return LevelHit(
+                exchange=data['exchange'], symbol=data['symbol'], market=data['market'],
+                interval=data['interval'], signal_type=data['signal_type'],
+                level_price=target, current_price=curr.close, timestamp=data['timestamp']
+            )
+        return None
+
+    # ==========================================
+    # FULL SCAN MODE
+    # ==========================================
+    async def run_full_scan(self, binance: BinanceClient, bybit: BybitClient):
+        logging.info("🌍 Starting FULL Market Scan...")
+        clear_message_ids()
+        
+        # 1. Fetch Symbols Concurrently
+        b_perp_t = asyncio.create_task(binance.get_perp_symbols())
+        b_spot_t = asyncio.create_task(binance.get_spot_symbols())
+        y_perp_t = asyncio.create_task(bybit.get_perp_symbols())
+        y_spot_t = asyncio.create_task(bybit.get_spot_symbols())
+        
+        bp, bs, yp, ys = await asyncio.gather(b_perp_t, b_spot_t, y_perp_t, y_spot_t)
+        
+        # 2. Apply Priority Logic (Clean Set Math)
+        def clean(syms): return {s for s in syms if s not in CONFIG.IGNORED_SYMBOLS}
+        
+        bp_s, bs_s = clean(bp), clean(bs)
+        yp_s, ys_s = clean(yp), clean(ys)
+        
+        # Normalize for deduplication logic
+        norm = lambda s: normalize_symbol(s)
+        
+        # Priority: BinPerp > BinSpot > BybPerp > BybSpot
+        final_bp = bp_s
+        final_bs = {s for s in bs_s if norm(s) not in {norm(x) for x in final_bp}}
+        
+        exclude_bybit = {norm(x) for x in final_bp} | {norm(x) for x in final_bs}
+        final_yp = {s for s in yp_s if norm(s) not in exclude_bybit}
+        
+        exclude_all = exclude_bybit | {norm(x) for x in final_yp}
+        final_ys = {s for s in ys_s if norm(s) not in exclude_all}
+
+        logging.info(f"Scanning: B-Perp:{len(final_bp)} B-Spot:{len(final_bs)} Y-Perp:{len(final_yp)} Y-Spot:{len(final_ys)}")
+
+        # 3. Build Scan Tasks
+        scan_tasks = []
+        def add_tasks(client, syms, mkt, ex_name):
+            for s in syms:
+                scan_tasks.append(self.scan_symbol_all_tfs(client, s, mkt, ex_name))
+
+        add_tasks(binance, final_bp, 'perp', 'Binance')
+        add_tasks(binance, final_bs, 'spot', 'Binance')
+        add_tasks(bybit, final_yp, 'perp', 'Bybit')
+        add_tasks(bybit, final_ys, 'spot', 'Bybit')
+
+        # 4. Execute Scan
+        results: List[LevelHit] = []
+        low_movements: List[LowMovementHit] = []
+        
+        for f in tqdm(asyncio.as_completed(scan_tasks), total=len(scan_tasks), desc="Scanning"):
+            revs, low = await f
+            results.extend(revs)
+            if low: low_movements.append(low)
+
+        # 5. Reporting & Persistence
+        save_levels(results, self.utc_now.isoformat())
+        
+        # Send Full Report (Chunks)
+        await self.send_full_report(results, low_movements)
+        
+        # Init Alert Message (Pinned/Updated message)
+        await self.send_or_update_alert_report([]) 
+
+    async def scan_symbol_all_tfs(self, client: ExchangeClient, symbol: str, market: str, exchange: str):
+        reversals = []
+        low_move = None
+        
+        for interval in ["1M", "1w", "1d"]:
+            candles = await client.fetch_ohlcv(symbol, interval, market, limit=3)
+            
+            # Logic 1: Reversal
+            price, sig = check_reversal(candles)
+            if price and sig:
+                # Check if current touches (already triggered)
+                if not current_candle_touched_price(candles, price):
+                    reversals.append(LevelHit(exchange, symbol, market, interval, sig, price))
+            
+            # Logic 2: Low Movement (Daily only)
+            if interval == "1d":
+                lm = check_low_movement(candles, threshold_percent=2.5) # Original used 2.5 in main scan
+                if lm is not None:
+                    low_move = LowMovementHit(exchange, symbol, market, interval, lm)
+                    
+        return reversals, low_move
+
+    # ==========================================
+    # TELEGRAM LOGIC
+    # ==========================================
+
+    async def send_chunks(self, text: str) -> List[int]:
+        """Splits text and sends messages, returning list of IDs."""
+        ids = []
         chunks = []
-        curr = ""
-        for part in text_parts:
-            # +2 for double newline
-            if len(curr) + len(part) + 4 > Config.MAX_TG_CHARS:
-                chunks.append(curr.strip())
-                curr = ""
-            curr += part + "\n\n"
-        if curr.strip(): chunks.append(curr.strip())
+        temp_chunk = ''
+        for line in text.splitlines(keepends=True):
+            if len(temp_chunk) + len(line) > CONFIG.MAX_TG_CHARS:
+                chunks.append(temp_chunk)
+                temp_chunk = ''
+            temp_chunk += line
+        if temp_chunk.strip(): chunks.append(temp_chunk)
         
-        # 2. ID Resolution
-        old_ids = []
-        if load_ids_from_file and Config.FILE_MSG_IDS.exists():
+        for chunk in chunks:
             try:
-                with open(Config.FILE_MSG_IDS, 'r') as f:
-                    data = json.load(f)
-                    old_ids = data.get("message_ids", [])
-                    logger.info(f"📜 Loaded {len(old_ids)} existing message IDs for editing.")
+                m = await self.tg_bot.send_message(chat_id=CONFIG.CHAT_ID, text=chunk, parse_mode='Markdown')
+                ids.append(m.message_id)
+                await asyncio.sleep(0.5)
             except Exception as e:
-                logger.error(f"Failed to load IDs: {e}")
+                logging.error(f"Failed to send chunk: {e}")
+        return ids
 
-        # 3. Send / Edit Loop
-        new_ids = []
-        from telegram.error import BadRequest
-
-        for i, chunk in enumerate(chunks):
-            msg_id = None
-            
-            # Try Edit if we have an old ID
-            if i < len(old_ids):
-                try:
-                    await self.bot.edit_message_text(
-                        chat_id=Config.CHAT_ID,
-                        message_id=old_ids[i],
-                        text=chunk,
-                        parse_mode='Markdown'
-                    )
-                    msg_id = old_ids[i]
-                except BadRequest as e:
-                    if "message is not modified" in str(e):
-                        # Content is identical. Keep ID.
-                        msg_id = old_ids[i]
-                    else:
-                        logger.warning(f"⚠️ Edit failed for ID {old_ids[i]}: {e}. Sending new.")
-                except Exception as e:
-                    logger.error(f"Edit Error: {e}")
-
-            # Fallback to Send New if Edit failed or no old ID
-            if msg_id is None:
-                try:
-                    m = await self.bot.send_message(
-                        chat_id=Config.CHAT_ID,
-                        text=chunk,
-                        parse_mode='Markdown'
-                    )
-                    msg_id = m.message_id
-                except Exception as e:
-                    logger.error(f"Send Error: {e}")
-
-            if msg_id:
-                new_ids.append(msg_id)
-            await asyncio.sleep(0.5)
-
-        # 4. Handle Excess Messages (Do NOT delete as per user requirement)
-        # If the report shrank (e.g. 5 messages -> 1 message), we edit the first one.
-        # The remaining 4 are strictly LEFT ALONE, effectively showing stale data,
-        # but satisfying "not delete them if it gets updated".
-        # We must keep track of their IDs though? 
-        # Actually, if we don't save them to the file, the next run will ignore them.
-        # Logic: We only save 'new_ids' (the ones we just touched).
+    async def send_or_update_alert_report(self, hits: List[LevelHit]):
+        """Updates the pinned alert message or sends new one."""
+        timestamp = self.utc_now.astimezone(timezone(timedelta(hours=3))).strftime("%Y-%m-%d %H:%M:%S UTC+3")
         
-        # 5. Save State
-        try:
-            with open(Config.FILE_MSG_IDS, 'w') as f:
-                json.dump({"message_ids": new_ids, "updated": datetime.now().isoformat()}, f)
-            logger.info(f"💾 Saved {len(new_ids)} message IDs.")
-        except Exception as e:
-            logger.error(f"Save IDs failed: {e}")
+        if not hits:
+            text = f"💥 *LEVEL ALERTS* 💥
 
-# -----------------------------------------------------------------------------
-# 8. Main Workflows
-# -----------------------------------------------------------------------------
-
-async def run_full_scan(clients: List[Any], tg: TelegramManager):
-    logger.info("🔭 STARTING FULL SCAN")
-    
-    # 1. Fetch Symbols
-    raw_data = {}
-    for name, client in clients:
-        raw_data[name] = await client.get_symbols()
-
-    # 2. Prioritize Symbols
-    def norm(s): return s.replace(":", "").replace("/", "")
-    tasks = [] # (Client, Symbol, Market)
-    seen = set()
-    order = [("Binance", 0, "perp"), ("Binance", 1, "spot"), ("Bybit", 0, "perp"), ("Bybit", 1, "spot")]
-    client_map = {name: c for name, c in clients}
-
-    for ex_name, set_idx, mkt in order:
-        if ex_name not in raw_data: continue
-        syms = raw_data[ex_name][set_idx]
-        for s in syms:
-            if s in Config.IGNORED_SYMBOLS: continue
-            n = norm(s)
-            if n not in seen:
-                seen.add(n)
-                tasks.append((client_map[ex_name], s, mkt))
-
-    logger.info(f"📋 Scanning {len(tasks)} unique symbols...")
-
-    # 3. Scan
-    levels = []
-    low_movs = []
-    
-    async def worker(client, s, m):
-        for interval in ["1d", "1w", "1M"]:
-            try:
-                candles = await client.get_candles(s, interval, m)
-                
-                # Reversal Logic
-                p, t = analyze_reversal(candles)
-                if p:
-                    # Legacy logic check: ensure current candle hasn't already invalidated/hit it?
-                    # "if equal_price ... and not current_candle_touched_price"
-                    if not is_level_hit(candles, p):
-                        levels.append(MarketLevel(client.__class__.__name__, s, m, interval, t, p, get_ts_string()))
-                
-                # Low Mov Logic
-                if interval == "1d":
-                    lm = analyze_low_movement(candles)
-                    if lm:
-                        low_movs.append(LowMovResult(client.__class__.__name__, s, m, lm))
-            except: pass
-
-    # Chunking
-    chunk_sz = 1000
-    for i in range(0, len(tasks), chunk_sz):
-        await asyncio.gather(*(worker(*t) for t in tasks[i:i+chunk_sz]))
-        logger.info(f"Progress: {min(i+chunk_sz, len(tasks))}/{len(tasks)}")
-
-    # 4. Save Levels
-    logger.info(f"✅ Found {len(levels)} levels, {len(low_movs)} low movers.")
-    with open(Config.FILE_LEVELS, 'w') as f:
-        json.dump({
-            "last_updated": get_ts_string(),
-            "levels": {f"{l.exchange}_{l.symbol}_{l.interval}": asdict(l) for l in levels}
-        }, f, indent=2)
-
-    # 5. Report Full Scan (Full formatting, New Messages)
-    full_report = build_full_scan_report(levels, low_movs)
-    await tg.send_smart_message(full_report, load_ids_from_file=False)
-
-    # 6. Reset Daily Hits & Init Alert Message
-    # Reset hits file for the new day
-    if Config.FILE_HITS.exists():
-        os.remove(Config.FILE_HITS)
-    
-    # Send "No alerts" message and save ID for future edits
-    init_alert = build_alerts_report([])
-    await tg.send_smart_message(init_alert, load_ids_from_file=False)
-
-
-async def run_price_check(clients: List[Any], tg: TelegramManager):
-    logger.info("🔍 STARTING PRICE CHECK")
-    
-    if not Config.FILE_LEVELS.exists():
-        logger.warning("No levels file found.")
-        return
-
-    # Load Levels
-    try:
-        with open(Config.FILE_LEVELS, 'r') as f:
-            data = json.load(f)
-            levels = [MarketLevel(**v) for v in data.get("levels", {}).values()]
-    except:
-        return
-
-    # Load Previous Hits (to append to them)
-    prev_hits = []
-    if Config.FILE_HITS.exists():
-        try:
-            with open(Config.FILE_HITS, 'r') as f:
-                prev_hits = [HitResult(**h) for h in json.load(f)]
-        except: pass
-
-    # Check Levels
-    new_hits = []
-    tasks = {}
-    for l in levels:
-        k = (l.exchange, l.symbol, l.market, l.interval)
-        if k not in tasks: tasks[k] = []
-        tasks[k].append(l)
-
-    client_map = {name: c for name, c in clients}
-
-    async def checker(key, lvl_list):
-        ex, sym, mkt, iv = key
-        try:
-            c_obj = client_map[ex]
-            candles = await c_obj.get_candles(sym, iv, mkt)
-            if not candles: return
-            
-            for lvl in lvl_list:
-                if is_level_hit(candles, lvl.price):
-                    # Unique ID for hit: Symbol + Interval + Price
-                    hid = f"{ex}_{sym}_{iv}_{lvl.price}"
-                    new_hits.append(HitResult(
-                        hid, ex, sym, mkt, iv, lvl.signal_type, lvl.price, 
-                        candles[0].close, get_ts_string()
-                    ))
-        except: pass
-
-    await asyncio.gather(*(checker(k, v) for k, v in tasks.items()))
-
-    # Merge Hits (Deduplicate)
-    all_hits_map = {h.id: h for h in prev_hits}
-    for h in new_hits:
-        all_hits_map[h.id] = h # Update or add
-    
-    final_hits = list(all_hits_map.values())
-    
-    # Save Updated Hits
-    with open(Config.FILE_HITS, 'w') as f:
-        json.dump([asdict(h) for h in final_hits], f, indent=2)
-
-    # Build Report (Full formatting)
-    report_text = build_alerts_report(final_hits)
-
-    # CRITICAL: load_ids_from_file=True to EDIT the previous message
-    await tg.send_smart_message(report_text, load_ids_from_file=True)
-
-
-async def main():
-    if not Config.PROXY_URL:
-        logger.error("No PROXY_LIST_URL")
-        return
-
-    # Infrastructure
-    pm = ProxyManager(Config.PROXY_URL)
-    await pm.fetch()
-    
-    http = HttpClient(pm)
-    await http.start()
-
-    binance = Binance(http)
-    bybit = Bybit(http)
-    tg = TelegramManager()
-    
-    clients = [("Binance", binance), ("Bybit", bybit)]
-
-    try:
-        if Config.RUN_MODE == "price_check":
-            await run_price_check(clients, tg)
+❌ No levels got hit at this time."
         else:
-            await run_full_scan(clients, tg)
-    finally:
-        await http.close()
+            text = f"🚨 *LEVEL ALERTS* 🚨
+
+⚡ {len(hits)} levels got hit!
+
+🕒 {timestamp}
+
+"
+            grouped = {} 
+            for h in hits:
+                grouped.setdefault(h.interval, {}).setdefault(h.exchange, {}).setdefault(h.signal_type, []).append(h)
+            
+            for interval in ["1M", "1w", "1d"]:
+                if interval not in grouped: continue
+                text += f"📅 *{interval} Alerts*
+
+"
+                for ex in ["Binance", "Bybit"]:
+                    data = grouped[interval].get(ex, {})
+                    bull = data.get("bullish", [])
+                    bear = data.get("bearish", [])
+                    
+                    if bull or bear:
+                        text += f"*{ex}*:
+"
+                        if bull:
+                            text += f"🍏 *Bullish ({len(bull)})*
+"
+                            for i in bull: text += f"• {i.symbol} @ ${i.level_price:.6f}
+"
+                            text += "
+"
+                        if bear:
+                            text += f"🔻 *Bearish ({len(bear)})*
+"
+                            for i in bear: text += f"• {i.symbol} @ ${i.level_price:.6f}
+"
+                            text += "
+"
+                text += "——————————————————
+
+"
+
+        # Message ID management
+        prev_ids = load_message_ids()
+        new_ids = []
+        
+        chunks = []
+        temp_chunk = ''
+        for line in text.splitlines(keepends=True):
+            if len(temp_chunk) + len(line) > CONFIG.MAX_TG_CHARS:
+                chunks.append(temp_chunk)
+                temp_chunk = ''
+            temp_chunk += line
+        if temp_chunk.strip(): chunks.append(temp_chunk)
+        
+        # Update or Send
+        for idx, chunk in enumerate(chunks):
+            if idx < len(prev_ids):
+                try:
+                    await self.tg_bot.edit_message_text(chat_id=CONFIG.CHAT_ID, message_id=prev_ids[idx], text=chunk, parse_mode='Markdown')
+                    new_ids.append(prev_ids[idx])
+                    continue
+                except Exception:
+                    pass # Fallback to send if edit fails
+            
+            # If no prev ID or edit failed
+            try:
+                m = await self.tg_bot.send_message(chat_id=CONFIG.CHAT_ID, text=chunk, parse_mode='Markdown')
+                new_ids.append(m.message_id)
+            except Exception as e:
+                logging.error(f"TG Send Error: {e}")
+
+        save_message_ids(new_ids)
+
+    async def send_full_report(self, results: List[LevelHit], low_movements: List[LowMovementHit]):
+        timestamp = self.utc_now.astimezone(timezone(timedelta(hours=3))).strftime("%Y-%m-%d %H:%M:%S UTC+3")
+        
+        # 1. Summary Section
+        binance_count = len([r for r in results if r.exchange == "Binance"])
+        bybit_count = len([r for r in results if r.exchange == "Bybit"])
+        
+        summary = f"💥 *Reversal Level Scanner*
+
+"
+        summary += f"✅ Total Reversal Signals: {len(results)}
+"
+        summary += f"*Binance*: {binance_count} | *Bybit*: {bybit_count}
+
+"
+        summary += f"🕒 {timestamp}"
+        await self.send_chunks(summary)
+        
+        # 2. Reversal Sections
+        grouped = {}
+        for r in results:
+            grouped.setdefault(r.interval, {}).setdefault(r.exchange, {}).setdefault(r.signal_type, []).append(r.symbol)
+            
+        for tf in ["1M", "1w", "1d"]:
+            if tf not in grouped: continue
+            msg = f"📅 *{tf} Timeframe* ({sum(len(grouped[tf][e][t]) for e in grouped[tf] for t in grouped[tf][e])} signals)
+
+"
+            has_data = False
+            for ex in ["Binance", "Bybit"]:
+                bull = sorted(grouped[tf].get(ex, {}).get("bullish", []))
+                bear = sorted(grouped[tf].get(ex, {}).get("bearish", []))
+                
+                if bull or bear:
+                    has_data = True
+                    msg += f"*{ex}*:
+"
+                    if bull: 
+                        msg += f"🍏 *Bullish ({len(bull)})*
+"
+                        for s in bull: msg += f"• {s}
+"
+                        msg += "
+"
+                    if bear: 
+                        msg += f"🔻 *Bearish ({len(bear)})*
+"
+                        for s in bear: msg += f"• {s}
+"
+                        msg += "
+"
+                    msg += "——————————————————
+
+"
+            
+            if has_data: 
+                await self.send_chunks(msg)
+
+        # 3. Low Movement Section
+        if low_movements:
+            low_movements.sort(key=lambda x: x.movement_percent)
+            msg = "📉 *Low Movement Daily Candles (<1.0%)*
+
+" # Original text check
+            
+            b_low = [x for x in low_movements if x.exchange == 'Binance']
+            y_low = [x for x in low_movements if x.exchange == 'Bybit']
+            
+            if b_low:
+                msg += "*Binance*:
+"
+                for x in b_low: msg += f"• {x.symbol} ({x.movement_percent:.2f}%)
+"
+                msg += "
+"
+                
+            if y_low:
+                msg += "*Bybit*:
+"
+                for x in y_low: msg += f"• {x.symbol} ({x.movement_percent:.2f}%)
+"
+                msg += "
+"
+            
+            msg += "——————————————————
+
+"
+            await self.send_chunks(msg)
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        pass
+    if os.name == 'nt':
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    
+    bot = MarketScanBot()
+    asyncio.run(bot.run())
