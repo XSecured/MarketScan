@@ -442,35 +442,40 @@ class MarketScanBot:
             logging.error("❌ Failed to fetch symbols. Check proxies/connection!")
             return
 
-        # 2. Deduplication Logic (Sequential Priority)
-        # Priority Order: Binance Perp > Binance Spot > Bybit Perp > Bybit Spot
+        # 2. Deduplication & Filtering Logic
+        # Priority: Binance Perp > Binance Spot > Bybit Perp > Bybit Spot
         
         seen_normalized = set()
         
         def filter_unique(symbols: List[str]) -> List[str]:
             unique_list = []
             for s in symbols:
+                # A. Global Ignore List
                 if s in CONFIG.IGNORED_SYMBOLS: 
                     continue
                 
-                # Normalize: "BTCUSDT" -> "BTC/USDT"
-                # This ensures "BTCUSDT" on Bybit matches "BTCUSDT" on Binance
+                # B. PATTERN FILTER: Strict "Must end with USDT" check.
+                # This instantly kills symbols like "BTCUSDT-27MAR26" or "ETHUSDT-26DEC25"
+                # because they end with numbers, not "USDT".
+                if not s.endswith("USDT"):
+                    continue
+
+                # C. Normalize & Deduplicate
                 norm = normalize_symbol(s)
-                
                 if norm not in seen_normalized:
                     unique_list.append(s)
                     seen_normalized.add(norm)
             return unique_list
 
-        # processing in exact order of priority
-        final_bp = filter_unique(bp)  # First dip: Takes everything valid
-        final_bs = filter_unique(bs)  # Skips if in BP
-        final_yp = filter_unique(yp)  # Skips if in BP or BS
-        final_ys = filter_unique(ys)  # Skips if in BP, BS, or YP
+        # Apply filter sequentially to respect priority
+        final_bp = filter_unique(bp)
+        final_bs = filter_unique(bs)
+        final_yp = filter_unique(yp)
+        final_ys = filter_unique(ys)
 
         logging.info(f"Scanning: B-Perp:{len(final_bp)} B-Spot:{len(final_bs)} Y-Perp:{len(final_yp)} Y-Spot:{len(final_ys)}")
 
-        # 3. Scan
+        # 3. Build Scan Tasks
         scan_tasks = []
         def add_tasks(client, syms, mkt, ex_name):
             for s in syms:
@@ -481,16 +486,16 @@ class MarketScanBot:
         add_tasks(bybit, final_yp, 'perp', 'Bybit')
         add_tasks(bybit, final_ys, 'spot', 'Bybit')
 
+        # 4. Execute Scan
         results: List[LevelHit] = []
         low_movements: List[LowMovementHit] = []
         
-        # Using tqdm for progress bar
         for f in tqdm(asyncio.as_completed(scan_tasks), total=len(scan_tasks), desc="Scanning"):
             revs, low = await f
             results.extend(revs)
             if low: low_movements.append(low)
 
-        # 4. Reporting
+        # 5. Report
         save_levels(results, self.utc_now.isoformat())
         await self.send_full_report(results, low_movements)
         await self.send_or_update_alert_report([]) 
