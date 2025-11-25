@@ -492,7 +492,7 @@ def create_report_sections(hits: List, low_moves: List = None) -> List[str]:
                 lm_text += f"*{exc}*:\n"
                 for item in subset:
                     lm_text += f"• {item['symbol']} ({item['movement_percent']:.2f}%)\n"
-                lm_text += \n"
+                lm_text += "\n"
         
         lm_text += "——————————————————\n\n"
         sections.append(lm_text.strip())
