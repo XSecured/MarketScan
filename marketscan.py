@@ -424,7 +424,7 @@ class MarketScanBot:
         return None
 
     # ==========================================
-    # FULL SCAN MODE
+    # FULL SCAN MODE (Fixed Deduplication)
     # ==========================================
     async def run_full_scan(self, binance: BinanceClient, bybit: BybitClient):
         logging.info("🌍 Starting FULL Market Scan...")
@@ -442,17 +442,31 @@ class MarketScanBot:
             logging.error("❌ Failed to fetch symbols. Check proxies/connection!")
             return
 
-        # 2. Deduplication Logic
-        def clean(syms): return {s for s in syms if s not in CONFIG.IGNORED_SYMBOLS}
-        bp_s, bs_s, yp_s, ys_s = clean(bp), clean(bs), clean(yp), clean(ys)
+        # 2. Deduplication Logic (Sequential Priority)
+        # Priority Order: Binance Perp > Binance Spot > Bybit Perp > Bybit Spot
         
-        norm = lambda s: normalize_symbol(s)
-        final_bp = bp_s
-        final_bs = {s for s in bs_s if norm(s) not in {norm(x) for x in final_bp}}
-        exclude_bybit = {norm(x) for x in final_bp} | {norm(x) for x in final_bs}
-        final_yp = {s for s in yp_s if norm(s) not in exclude_bybit}
-        exclude_all = exclude_bybit | {norm(x) for x in final_yp}
-        final_ys = {s for s in ys_s if norm(s) not in exclude_all}
+        seen_normalized = set()
+        
+        def filter_unique(symbols: List[str]) -> List[str]:
+            unique_list = []
+            for s in symbols:
+                if s in CONFIG.IGNORED_SYMBOLS: 
+                    continue
+                
+                # Normalize: "BTCUSDT" -> "BTC/USDT"
+                # This ensures "BTCUSDT" on Bybit matches "BTCUSDT" on Binance
+                norm = normalize_symbol(s)
+                
+                if norm not in seen_normalized:
+                    unique_list.append(s)
+                    seen_normalized.add(norm)
+            return unique_list
+
+        # processing in exact order of priority
+        final_bp = filter_unique(bp)  # First dip: Takes everything valid
+        final_bs = filter_unique(bs)  # Skips if in BP
+        final_yp = filter_unique(yp)  # Skips if in BP or BS
+        final_ys = filter_unique(ys)  # Skips if in BP, BS, or YP
 
         logging.info(f"Scanning: B-Perp:{len(final_bp)} B-Spot:{len(final_bs)} Y-Perp:{len(final_yp)} Y-Spot:{len(final_ys)}")
 
@@ -470,6 +484,7 @@ class MarketScanBot:
         results: List[LevelHit] = []
         low_movements: List[LowMovementHit] = []
         
+        # Using tqdm for progress bar
         for f in tqdm(asyncio.as_completed(scan_tasks), total=len(scan_tasks), desc="Scanning"):
             revs, low = await f
             results.extend(revs)
