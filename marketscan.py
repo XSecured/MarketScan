@@ -98,11 +98,12 @@ class AsyncProxyPool:
         self._lock = asyncio.Lock()
 
     async def populate(self, url: str, session: aiohttp.ClientSession):
-        """Fetches AND validates proxies before use."""
+        """Fetches AND validates proxies with high-speed early exit."""
         if not url:
-            logging.warning("⚠️ No Proxy URL provided! Running without proxies (Risk of bans).")
+            logging.warning("⚠️ No Proxy URL provided! Running without proxies.")
             return
 
+        # 1. Fetch Proxy List
         raw_proxies = []
         try:
             logging.info(f"📥 Fetching proxies from {url}...")
@@ -119,33 +120,47 @@ class AsyncProxyPool:
 
         logging.info(f"🔎 Validating {len(raw_proxies)} proxies (Target: {self.max_pool_size})...")
         
-        working_proxies = []
-        chunk_size = 50  # Validate 50 at a time
+        self.proxies = []
+        # Shuffle to avoid getting stuck in a block of bad IPs from the same subnet
+        random.shuffle(raw_proxies)
         
-        # FIX: Iterate over the STRINGS first, creating tasks only when needed
-        for i in range(0, len(raw_proxies), chunk_size):
-            # Get a slice of raw URL strings
-            chunk_urls = raw_proxies[i:i+chunk_size]
-            
-            # Create tasks ONLY for this specific chunk
-            tasks = [self._test_proxy(p, session) for p in chunk_urls]
-            
-            # Run them
-            results = await asyncio.gather(*tasks)
-            
-            # Process results
-            for p, is_good in results:
+        # 2. Create Tasks with Semaphore (Throttling)
+        # This allows us to queue ALL proxies but only run 200 at a time.
+        sem = asyncio.Semaphore(200)
+
+        async def protected_test(p):
+            async with sem:
+                return await self._test_proxy(p, session)
+
+        # Wrap in create_task to avoid "coroutine never awaited" warning
+        tasks = [asyncio.create_task(protected_test(p)) for p in raw_proxies]
+
+        # 3. Process results AS SOON AS THEY FINISH (No waiting for batches)
+        for future in asyncio.as_completed(tasks):
+            try:
+                proxy, is_good = await future
                 if is_good:
-                    working_proxies.append(p)
-            
-            # Stop if we have enough
-            if len(working_proxies) >= self.max_pool_size:
-                break
+                    self.proxies.append(proxy)
+                    # EXIT IMMEDIATELY once we have enough
+                    if len(self.proxies) >= self.max_pool_size:
+                        break
+            except:
+                pass
         
-        self.proxies = working_proxies[:self.max_pool_size]
+        # 4. Cleanup: Cancel all remaining tasks
+        # This stops the background work instantly and frees resources
+        cancelled_count = 0
+        for t in tasks:
+            if not t.done():
+                t.cancel()
+                cancelled_count += 1
+        
+        # Allow a tiny moment for cancellations to register
+        await asyncio.sleep(0.1)
+        
         if self.proxies:
             self.iterator = cycle(self.proxies)
-            logging.info(f"✅ Proxy Pool Ready: {len(self.proxies)} working proxies.")
+            logging.info(f"✅ Proxy Pool Ready: {len(self.proxies)} working proxies (Cancelled {cancelled_count} redundant checks).")
         else:
             logging.error("❌ NO WORKING PROXIES FOUND! Calls will likely fail.")
 
