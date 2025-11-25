@@ -119,19 +119,26 @@ class AsyncProxyPool:
 
         logging.info(f"🔎 Validating {len(raw_proxies)} proxies (Target: {self.max_pool_size})...")
         
-        # Parallel validation
-        tasks = [self._test_proxy(p, session) for p in raw_proxies]
         working_proxies = []
+        chunk_size = 50  # Validate 50 at a time
         
-        # Check in chunks to avoid killing local network
-        chunk_size = 100
-        for i in range(0, len(tasks), chunk_size):
-            chunk = tasks[i:i+chunk_size]
-            results = await asyncio.gather(*chunk)
+        # FIX: Iterate over the STRINGS first, creating tasks only when needed
+        for i in range(0, len(raw_proxies), chunk_size):
+            # Get a slice of raw URL strings
+            chunk_urls = raw_proxies[i:i+chunk_size]
+            
+            # Create tasks ONLY for this specific chunk
+            tasks = [self._test_proxy(p, session) for p in chunk_urls]
+            
+            # Run them
+            results = await asyncio.gather(*tasks)
+            
+            # Process results
             for p, is_good in results:
                 if is_good:
                     working_proxies.append(p)
             
+            # Stop if we have enough
             if len(working_proxies) >= self.max_pool_size:
                 break
         
