@@ -553,57 +553,77 @@ class MarketScanBot:
         return ids
 
     async def send_or_update_alert_report(self, hits: List[LevelHit]):
-        """Updates the pinned alert message or sends new one."""
-        timestamp = self.utc_now.astimezone(
-            timezone(timedelta(hours=3))
-        ).strftime("%Y-%m-%d %H:%M:%S UTC+3")
+        """Updates the pinned alert message or sends new one with New Look."""
+        timestamp = self.utc_now.astimezone(timezone(timedelta(hours=3))).strftime("%d %b %H:%M UTC+3")
         
+        def _clean_sym(s: str) -> str:
+            return s.replace("USDT", "")
+        
+        def _fmt_price(p: float) -> str:
+            # Formats price cleanly: 0.0045 or 65000 (no trailing zeros)
+            return f"${p:g}"
+
         if not hits:
             text = (
-                f"💥 *LEVEL ALERTS* 💥\n\n"
-                f"❌ No levels got hit at this time."
+                "🚨 *LEVEL ALERT SYSTEM*\n"
+                "═════════════════════\n"
+                "❌ No active level hits right now.\n"
+                "═════════════════════\n"
+                f"🕒 {timestamp}"
             )
         else:
-            text = (
-                f"🚨 *LEVEL ALERTS* 🚨\n\n"
-                f"⚡ {len(hits)} levels got hit!\n\n"
-                f"🕒 {timestamp}\n\n"
-            )
-            grouped = {}
-            for h in hits:
-                grouped.setdefault(h.interval, {}) \
-                       .setdefault(h.exchange, {}) \
-                       .setdefault(h.signal_type, []) \
-                       .append(h)
+            lines = [
+                "🚨 *LEVEL ALERT SYSTEM*",
+                "═════════════════════\n",
+                f"⚡ *{len(hits)} LEVELS HIT!*",
+                ""
+            ]
             
-            for interval in ["1M", "1w", "1d"]:
-                if interval not in grouped:
-                    continue
-                text += f"📅 *{interval} Alerts*\n\n"
-                
-                for ex in ["Binance", "Bybit"]:
-                    data = grouped[interval].get(ex, {})
-                    bull = data.get("bullish", [])
-                    bear = data.get("bearish", [])
-                    
-                    if bull or bear:
-                        text += f"*{ex}*:\n"
-                        
-                        if bull:
-                            text += f"🍏 *Bullish ({len(bull)})*\n"
-                            for i in bull:
-                                text += f"• {i.symbol} @ ${i.level_price:.6f}\n"
-                            text += "\n"
-                        
-                        if bear:
-                            text += f"🔻 *Bearish ({len(bear)})*\n"
-                            for i in bear:
-                                text += f"• {i.symbol} @ ${i.level_price:.6f}\n"
-                            text += "\n"
-                
-                text += "——————————————————\n\n"
+            grouped = {} 
+            for h in hits:
+                grouped.setdefault(h.interval, {}).setdefault(h.exchange, {}).setdefault(h.signal_type, []).append(h)
+            
+            # Map internal keys to nice display labels
+            tf_labels = {"1M": "MONTHLY (1M)", "1w": "WEEKLY (1w)", "1d": "DAILY (1d)"}
 
-        # Message ID management
+            for interval in ["1M", "1w", "1d"]:
+                if interval not in grouped: continue
+                
+                lines.append(f"📅 *{tf_labels.get(interval, interval)}*\n")
+                
+                exchanges = [("Binance", "🟡"), ("Bybit", "⚫")]
+                
+                for ex_name, ex_icon in exchanges:
+                    ex_data = grouped[interval].get(ex_name, {})
+                    bull = sorted(ex_data.get("bullish", []), key=lambda x: x.symbol)
+                    bear = sorted(ex_data.get("bearish", []), key=lambda x: x.symbol)
+                    
+                    if not bull and not bear:
+                        continue
+
+                    lines.append(f"┌ {ex_icon} *{ex_name.upper()}*")
+                    
+                    # Helper to create the string list: "BTC ($95000), SOL ($140)"
+                    def fmt_list(items):
+                        return ", ".join([f"{_clean_sym(x.symbol)} ({_fmt_price(x.level_price)})" for x in items])
+
+                    if bull and bear:
+                        lines.append(f"│ 🍏 *Bull*: {fmt_list(bull)}")
+                        lines.append(f"└ 🔻 *Bear*: {fmt_list(bear)}")
+                    elif bull:
+                        lines.append(f"└ 🍏 *Bull*: {fmt_list(bull)}")
+                    elif bear:
+                        lines.append(f"└ 🔻 *Bear*: {fmt_list(bear)}")
+                    
+                    lines.append("") # Spacer
+                
+            lines.append("═════════════════════")
+            lines.append(f"🕒 {timestamp}")
+            text = "\n".join(lines)
+
+        # ---------------------------------------------------------
+        # Message ID Management (Pinned/Updated Message Logic)
+        # ---------------------------------------------------------
         prev_ids = load_message_ids()
         new_ids = []
         
@@ -614,31 +634,21 @@ class MarketScanBot:
                 chunks.append(temp_chunk)
                 temp_chunk = ''
             temp_chunk += line
-        if temp_chunk.strip():
-            chunks.append(temp_chunk)
+        if temp_chunk.strip(): chunks.append(temp_chunk)
         
-        # Update or Send
         for idx, chunk in enumerate(chunks):
+            # Try to edit existing message to reduce spam
             if idx < len(prev_ids):
                 try:
-                    await self.tg_bot.edit_message_text(
-                        chat_id=CONFIG.CHAT_ID,
-                        message_id=prev_ids[idx],
-                        text=chunk,
-                        parse_mode='Markdown'
-                    )
+                    await self.tg_bot.edit_message_text(chat_id=CONFIG.CHAT_ID, message_id=prev_ids[idx], text=chunk, parse_mode='Markdown')
                     new_ids.append(prev_ids[idx])
                     continue
                 except Exception:
-                    pass  # fallback to send
+                    pass # If edit fails (e.g. message deleted), fall through to send new
             
-            # If no prev ID or edit failed
+            # Send new message if needed
             try:
-                m = await self.tg_bot.send_message(
-                    chat_id=CONFIG.CHAT_ID,
-                    text=chunk,
-                    parse_mode='Markdown'
-                )
+                m = await self.tg_bot.send_message(chat_id=CONFIG.CHAT_ID, text=chunk, parse_mode='Markdown')
                 new_ids.append(m.message_id)
             except Exception as e:
                 logging.error(f"TG Send Error: {e}")
@@ -646,92 +656,101 @@ class MarketScanBot:
         save_message_ids(new_ids)
 
     async def send_full_report(self, results: List[LevelHit], low_movements: List[LowMovementHit]):
-        timestamp = self.utc_now.astimezone(
-            timezone(timedelta(hours=3))
-        ).strftime("%Y-%m-%d %H:%M:%S UTC+3")
+        timestamp = self.utc_now.astimezone(timezone(timedelta(hours=3))).strftime("%d %b %H:%M UTC+3")
         
-        # 1. Summary Section
-        binance_count = len([r for r in results if r.exchange == "Binance"])
-        bybit_count = len([r for r in results if r.exchange == "Bybit"])
-        
-        summary = (
-            f"💥 *Reversal Level Scanner*\n\n"
-            f"✅ Total Reversal Signals: {len(results)}\n"
-            f"*Binance*: {binance_count} | *Bybit*: {bybit_count}\n\n"
-            f"🕒 {timestamp}"
-        )
-        await self.send_chunks(summary)
+        # Helper to strip USDT for clean display
+        def _clean_sym(s: str) -> str:
+            return s.replace("USDT", "")
+
+        # 1. Header
+        lines = [
+            "🚨 *REVERSAL ALERT SYSTEM*",
+            "═════════════════════\n"
+        ]
         
         # 2. Reversal Sections
         grouped = {}
         for r in results:
-            grouped.setdefault(r.interval, {}) \
-                   .setdefault(r.exchange, {}) \
-                   .setdefault(r.signal_type, []) \
-                   .append(r.symbol)
+            grouped.setdefault(r.interval, {}).setdefault(r.exchange, {}).setdefault(r.signal_type, []).append(_clean_sym(r.symbol))
             
-        for tf in ["1M", "1w", "1d"]:
-            if tf not in grouped:
-                continue
+        has_any_data = False
+        for tf_label, tf_key in [("MONTHLY (1M)", "1M"), ("WEEKLY (1w)", "1w"), ("DAILY (1d)", "1d")]:
+            if tf_key not in grouped: continue
             
-            total = sum(
-                len(grouped[tf][e][t])
-                for e in grouped[tf]
-                for t in grouped[tf][e]
-            )
+            tf_data = grouped[tf_key]
+            # Check if this timeframe actually has content to print
+            if not any(tf_data.values()): continue
             
-            msg = f"📅 *{tf} Timeframe* ({total} signals)\n\n"
-            has_data = False
+            lines.append(f"📅 *{tf_label}*\n")
+            has_any_data = True
+
+            # Define specific order and styling
+            exchanges = [("Binance", "🟡"), ("Bybit", "⚫")]
             
-            for ex in ["Binance", "Bybit"]:
-                bull = sorted(grouped[tf].get(ex, {}).get("bullish", []))
-                bear = sorted(grouped[tf].get(ex, {}).get("bearish", []))
+            for ex_name, ex_icon in exchanges:
+                ex_data = tf_data.get(ex_name, {})
+                bull = sorted(ex_data.get("bullish", []))
+                bear = sorted(ex_data.get("bearish", []))
                 
-                if bull or bear:
-                    has_data = True
-                    msg += f"*{ex}*:\n"
-                    
-                    if bull:
-                        msg += f"🍏 *Bullish ({len(bull)})*\n"
-                        for s in bull:
-                            msg += f"• {s}\n"
-                        msg += "\n"
-                    
-                    if bear:
-                        msg += f"🔻 *Bearish ({len(bear)})*\n"
-                        for s in bear:
-                            msg += f"• {s}\n"
-                        msg += "\n"
-                    
-                    msg += "——————————————————\n\n"
-            
-            if has_data:
-                await self.send_chunks(msg)
+                if not bull and not bear:
+                    continue
+
+                lines.append(f"┌ {ex_icon} *{ex_name.upper()}*")
+                
+                # Logic to handle the tree lines (│ vs └)
+                # If we have both bull and bear, first one gets │, last gets └
+                # If we only have one, it gets └
+                
+                if bull and bear:
+                    lines.append(f"│ 🍏 *Bull*: {', '.join(bull)}")
+                    lines.append(f"└ 🔻 *Bear*: {', '.join(bear)}")
+                elif bull:
+                    lines.append(f"└ 🍏 *Bull*: {', '.join(bull)}")
+                elif bear:
+                    lines.append(f"└ 🔻 *Bear*: {', '.join(bear)}")
+                
+                lines.append("") # Spacer between exchanges
+
+            lines.append("═════════════════════\n")
+
+        if not has_any_data:
+            lines.append("❌ No Reversal Signals Detected.\n")
 
         # 3. Low Movement Section
         if low_movements:
             low_movements.sort(key=lambda x: x.movement_percent)
+            lines.append("📉 *SQUEEZE ALERT (<1%)*")
             
-            msg = "📉 *Low Movement Daily Candles (<1.0%)*\n\n"
+            # Group by exchange
+            lm_grouped = {"Binance": [], "Bybit": []}
+            for x in low_movements:
+                if x.exchange in lm_grouped:
+                    lm_grouped[x.exchange].append(x)
             
-            b_low = [x for x in low_movements if x.exchange == 'Binance']
-            y_low = [x for x in low_movements if x.exchange == 'Bybit']
-            
-            if b_low:
-                msg += "*Binance*:\n"
-                for x in b_low:
-                    msg += f"• {x.symbol} ({x.movement_percent:.2f}%)\n"
-                msg += "\n"
+            for ex_name, ex_icon in [("Binance", "🟡"), ("Bybit", "⚫")]:
+                items = lm_grouped.get(ex_name, [])
+                if not items: continue
                 
-            if y_low:
-                msg += "*Bybit*:\n"
-                for x in y_low:
-                    msg += f"• {x.symbol} ({x.movement_percent:.2f}%)\n"
-                msg += "\n"
-            
-            msg += "——————————————————\n\n"
-            
-            await self.send_chunks(msg)
+                lines.append(f"┌ {ex_icon} *{ex_name.upper()}*")
+                # Limit to top 10 per exchange to save space
+                top_items = items[:10]
+                
+                for i, item in enumerate(top_items):
+                    is_last = (i == len(top_items) - 1)
+                    prefix = "└" if is_last else "│"
+                    clean_s = _clean_sym(item.symbol)
+                    lines.append(f"{prefix} {clean_s} ({item.movement_percent:.2f}%)")
+                
+                if len(items) > 10:
+                    lines.append(f"└ ...and {len(items)-10} more")
+                lines.append("")
+
+        # 4. Footer
+        lines.append(f"🕒 {timestamp}")
+
+        # Join and Send
+        full_text = "\n".join(lines)
+        await self.send_chunks(full_text)
 
 if __name__ == "__main__":
     if os.name == 'nt':
