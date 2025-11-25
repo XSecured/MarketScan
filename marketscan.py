@@ -7,7 +7,6 @@ import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Set, Optional, Tuple, Any
-from pathlib import Path
 from itertools import cycle
 
 import aiohttp
@@ -16,16 +15,16 @@ from telegram.error import BadRequest
 from tqdm.asyncio import tqdm
 
 # ==========================================
-# CONFIGURATION & CONSTANTS
+# CONFIGURATION
 # ==========================================
 
 @dataclass
 class Config:
     FETCH_TIMEOUT_TOTAL: int = 15
     REQUEST_TIMEOUT: int = 5
-    MAX_RETRIES: int = 3  # Optimized: 2 retries is often enough for async
+    MAX_RETRIES: int = 3
     MAX_TG_CHARS: int = 4000
-    MAX_CONCURRENCY: int = 50  # Higher concurrency safe due to async/await
+    MAX_CONCURRENCY: int = 50
     
     # Files
     LEVELS_FILE: str = "detected_levels.json"
@@ -47,7 +46,7 @@ class Config:
 CONFIG = Config()
 
 # ==========================================
-# DATA MODELS (Modern & Typed)
+# DATA MODELS
 # ==========================================
 
 @dataclass
@@ -56,7 +55,6 @@ class Candle:
     high: float
     low: float
     close: float
-    # We don't strictly need volume/time for the logic provided, keeping it lean
 
 @dataclass
 class LevelHit:
@@ -87,18 +85,9 @@ class LowMovementHit:
     market: str
     interval: str
     movement_percent: float
-    
-    def to_dict(self):
-        return {
-            "exchange": self.exchange,
-            "symbol": self.symbol,
-            "market": self.market,
-            "interval": self.interval,
-            "movement_percent": self.movement_percent
-        }
 
 # ==========================================
-# ASYNC PROXY POOL
+# ROBUST PROXY POOL (FIXED)
 # ==========================================
 
 class AsyncProxyPool:
@@ -107,66 +96,94 @@ class AsyncProxyPool:
         self.max_pool_size = max_pool_size
         self.iterator = None
         self._lock = asyncio.Lock()
-        self.failed_counts: Dict[str, int] = {}
 
     async def populate(self, url: str, session: aiohttp.ClientSession):
+        """Fetches AND validates proxies before use."""
+        if not url:
+            logging.warning("⚠️ No Proxy URL provided! Running without proxies (Risk of bans).")
+            return
+
+        raw_proxies = []
         try:
-            logging.info(f"Fetching proxies from {url}...")
-            async with session.get(url, timeout=10) as resp:
+            logging.info(f"📥 Fetching proxies from {url}...")
+            async with session.get(url, timeout=15) as resp:
                 if resp.status == 200:
                     text = await resp.text()
-                    candidates = [
-                        line.strip() if "://" in line else f"http://{line.strip()}" 
-                        for line in text.splitlines() if line.strip()
-                    ]
-                    # Quick validation of first N
-                    self.proxies = candidates[:self.max_pool_size * 2] 
-                    self.iterator = cycle(self.proxies)
-                    logging.info(f"Loaded {len(self.proxies)} proxies.")
+                    for line in text.splitlines():
+                        p = line.strip()
+                        if p:
+                            raw_proxies.append(p if "://" in p else f"http://{p}")
         except Exception as e:
-            logging.error(f"Failed to load proxies: {e}")
+            logging.error(f"❌ Failed to fetch proxy list: {e}")
+            return
+
+        logging.info(f"🔎 Validating {len(raw_proxies)} proxies (Target: {self.max_pool_size})...")
+        
+        # Parallel validation
+        tasks = [self._test_proxy(p, session) for p in raw_proxies]
+        working_proxies = []
+        
+        # Check in chunks to avoid killing local network
+        chunk_size = 100
+        for i in range(0, len(tasks), chunk_size):
+            chunk = tasks[i:i+chunk_size]
+            results = await asyncio.gather(*chunk)
+            for p, is_good in results:
+                if is_good:
+                    working_proxies.append(p)
+            
+            if len(working_proxies) >= self.max_pool_size:
+                break
+        
+        self.proxies = working_proxies[:self.max_pool_size]
+        if self.proxies:
+            self.iterator = cycle(self.proxies)
+            logging.info(f"✅ Proxy Pool Ready: {len(self.proxies)} working proxies.")
+        else:
+            logging.error("❌ NO WORKING PROXIES FOUND! Calls will likely fail.")
+
+    async def _test_proxy(self, proxy: str, session: aiohttp.ClientSession) -> Tuple[str, bool]:
+        try:
+            # Simple connection test to Binance API
+            test_url = "https://api.binance.com/api/v3/time"
+            async with session.get(test_url, proxy=proxy, timeout=5) as resp:
+                return proxy, resp.status == 200
+        except:
+            return proxy, False
 
     async def get_proxy(self) -> Optional[str]:
+        if not self.proxies:
+            return None
         async with self._lock:
-            if not self.proxies:
-                return None
-            # Simple round-robin
             return next(self.iterator)
 
-    async def mark_bad(self, proxy: str):
-        # In a robust system we might remove it, but for this script
-        # strictly following logic, we just log or skip. 
-        pass
-
 # ==========================================
-# EFFICIENT EXCHANGE CLIENTS
+# EXCHANGE CLIENTS
 # ==========================================
 
 class ExchangeClient:
-    """Base async client for fetching data efficiently."""
     def __init__(self, session: aiohttp.ClientSession, proxy_pool: AsyncProxyPool):
         self.session = session
         self.proxies = proxy_pool
-        self.sem = asyncio.Semaphore(CONFIG.MAX_CONCURRENCY)
+        # Higher concurrency only if we have proxies, otherwise limit strictly
+        limit = CONFIG.MAX_CONCURRENCY if proxy_pool.proxies else 5
+        self.sem = asyncio.Semaphore(limit)
 
     async def _request(self, url: str, params: dict = None) -> Any:
-        """Robust async request with retries and proxy rotation."""
+        """Robust async request with retries."""
         for attempt in range(CONFIG.MAX_RETRIES):
             proxy = await self.proxies.get_proxy()
             try:
-                async with self.sem: # Limit concurrency
+                async with self.sem: 
                     async with self.session.get(
-                        url, 
-                        params=params, 
-                        proxy=proxy, 
-                        timeout=CONFIG.REQUEST_TIMEOUT
+                        url, params=params, proxy=proxy, timeout=CONFIG.REQUEST_TIMEOUT
                     ) as resp:
                         if resp.status == 200:
                             return await resp.json()
-                        elif resp.status == 429: # Rate limit
-                            await asyncio.sleep(2)
+                        elif resp.status == 429:
+                            await asyncio.sleep(5) # Rate limit backoff
             except Exception:
-                pass # Silent fail for speed, retry next loop
+                pass 
             
             await asyncio.sleep(0.5 * attempt)
         return None
@@ -189,31 +206,24 @@ class BinanceClient(ExchangeClient):
         data = await self._request(base, {'symbol': symbol, 'interval': interval, 'limit': limit})
         if not data or not isinstance(data, list): return []
         
-        # Binance: [Open Time, Open, High, Low, Close, ...]
-        # Returns Oldest -> Newest
         candles = []
         for c in data:
             try:
-                candles.append(Candle(
-                    open=float(c[1]), high=float(c[2]), low=float(c[3]), close=float(c[4])
-                ))
-            except (ValueError, IndexError):
-                continue
-        # Reverse to get Newest -> Oldest (matching original pandas df.iloc[::-1])
+                candles.append(Candle(open=float(c[1]), high=float(c[2]), low=float(c[3]), close=float(c[4])))
+            except: continue
+        # Reverse: Binance gives Oldest->Newest. We want Newest->Oldest (Index 0 = Newest)
         return candles[::-1]
 
 class BybitClient(ExchangeClient):
     async def get_perp_symbols(self) -> List[str]:
         data = await self._request('https://api.bybit.com/v5/market/instruments-info', {'category': 'linear'})
         if not data: return []
-        return [s['symbol'] for s in data['result']['list'] 
-                if s['status'] == 'Trading' and s['quoteCoin'] == 'USDT']
+        return [s['symbol'] for s in data['result']['list'] if s['status'] == 'Trading' and s['quoteCoin'] == 'USDT']
 
     async def get_spot_symbols(self) -> List[str]:
         data = await self._request('https://api.bybit.com/v5/market/instruments-info', {'category': 'spot'})
         if not data: return []
-        return [s['symbol'] for s in data['result']['list'] 
-                if s['status'] == 'Trading' and s['quoteCoin'] == 'USDT']
+        return [s['symbol'] for s in data['result']['list'] if s['status'] == 'Trading' and s['quoteCoin'] == 'USDT']
 
     async def fetch_ohlcv(self, symbol: str, interval: str, market: str, limit: int = 3) -> List[Candle]:
         url = 'https://api.bybit.com/v5/market/kline'
@@ -226,41 +236,35 @@ class BybitClient(ExchangeClient):
         raw_list = data.get('result', {}).get('list', [])
         if not raw_list: return []
         
-        # Map to Candle. Bybit: [startTime, open, high, low, close, volume, turnover]
-        # Bybit returns Newest -> Oldest (List[0] is current)
         candles = []
         for c in raw_list:
-             candles.append(Candle(
-                open=float(c[1]), high=float(c[2]), low=float(c[3]), close=float(c[4])
-            ))
+             candles.append(Candle(open=float(c[1]), high=float(c[2]), low=float(c[3]), close=float(c[4])))
         
-        return candles # Already Newest -> Oldest
+        # Bybit V5 gives Newest->Oldest. No reverse needed. Index 0 is Newest.
+        return candles 
 
 # ==========================================
-# CORE LOGIC (Pure Python, No Pandas)
+# CORE LOGIC
 # ==========================================
 
 def floats_are_equal(a: float, b: float, rel_tol: float = 0.003) -> bool:
     return abs(a - b) <= rel_tol * ((a + b) / 2.0)
 
 def check_reversal(candles: List[Candle]) -> Tuple[Optional[float], Optional[str]]:
-    """
-    Analyzes 3 candles: [Newest(Current), LastClosed, PrevClosed]
-    """
-    if len(candles) < 3:
-        return None, None
+    """Analyzes 3 candles. Expects Index 0 = Newest."""
+    if len(candles) < 3: return None, None
 
-    # Indices: 0 is current (live), 1 is last closed, 2 is previous closed
-    # (This matches the reversed order from fetch_ohlcv)
+    # 0=Live, 1=Last Closed, 2=Prev Closed
     last_closed = candles[1]
     second_last_closed = candles[2]
 
-    # Logic: Check if prev_close == last_open
+    # Logic: Prev Close vs Last Open
     if floats_are_equal(second_last_closed.close, last_closed.open):
         equal_price = second_last_closed.close
         
-        second_last_is_green = second_last_closed.close > second_last_closed.open
+        # Colors
         second_last_is_red = second_last_closed.close < second_last_closed.open
+        second_last_is_green = second_last_closed.close > second_last_closed.open
         last_is_green = last_closed.close > last_closed.open
         last_is_red = last_closed.close < last_closed.open
 
@@ -280,10 +284,8 @@ def current_candle_touched_price(candles: List[Candle], price: float) -> bool:
     return curr.low <= price <= curr.high
 
 def check_low_movement(candles: List[Candle], threshold_percent: float = 1.0) -> Optional[float]:
-    if len(candles) < 2:
-        return None
-    # Last closed candle is at index 1
-    last = candles[1]
+    if len(candles) < 2: return None
+    last = candles[1] # Last closed
     if last.open == 0: return None
     
     move_pct = abs((last.close - last.open) / last.open) * 100
@@ -300,8 +302,7 @@ def load_levels() -> Dict[str, Any]:
         if os.path.exists(CONFIG.LEVELS_FILE):
             with open(CONFIG.LEVELS_FILE, "r") as f:
                 return json.load(f).get("levels", {})
-    except Exception:
-        pass
+    except Exception: pass
     return {}
 
 def save_levels(results: List[LevelHit], utc_now_str: str):
@@ -309,7 +310,6 @@ def save_levels(results: List[LevelHit], utc_now_str: str):
     for r in results:
         key = f"{r.exchange}_{r.symbol}_{r.market}_{r.interval}"
         data["levels"][key] = r.to_dict()
-    
     with open(CONFIG.LEVELS_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
@@ -325,8 +325,7 @@ def save_message_ids(ids: List[int]):
 def load_message_ids() -> List[int]:
     if not os.path.exists(CONFIG.MSG_FILE): return []
     try:
-        with open(CONFIG.MSG_FILE) as f:
-            return json.load(f).get("message_ids", [])
+        with open(CONFIG.MSG_FILE) as f: return json.load(f).get("message_ids", [])
     except: return []
 
 def clear_message_ids():
@@ -345,16 +344,16 @@ class MarketScanBot:
         logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
         
         if not CONFIG.TELEGRAM_TOKEN or not CONFIG.CHAT_ID:
-            logging.error("Missing Telegram Env Vars")
+            logging.error("❌ Missing Telegram Env Vars")
             return
 
         async with aiohttp.ClientSession() as session:
-            # 1. Setup Proxy
+            # 1. Setup Proxy (Critical Fix)
             proxies = AsyncProxyPool()
             if CONFIG.PROXY_URL:
                 await proxies.populate(CONFIG.PROXY_URL, session)
             
-            # 2. Setup Clients
+            # 2. Clients
             binance = BinanceClient(session, proxies)
             bybit = BybitClient(session, proxies)
 
@@ -367,9 +366,11 @@ class MarketScanBot:
     # PRICE CHECK MODE
     # ==========================================
     async def run_price_check(self, binance: BinanceClient, bybit: BybitClient):
-        logging.info("🚀 Starting FAST Price Check...")
+        logging.info("🚀 Starting Price Check...")
         levels_data = load_levels()
+        
         if not levels_data:
+            logging.info("⚠️ No levels found in file.")
             await self.send_or_update_alert_report([])
             return
 
@@ -386,11 +387,9 @@ class MarketScanBot:
         await self.send_or_update_alert_report(hits)
 
     async def check_single_level(self, client: ExchangeClient, data: dict) -> Optional[LevelHit]:
-        # Need 2 candles minimum to get current price properly if using same logic as original
         candles = await client.fetch_ohlcv(data['symbol'], data['interval'], data['market'], limit=2)
         if not candles: return None
         
-        # Newest candle is index 0
         curr = candles[0]
         target = data['price']
         
@@ -409,7 +408,7 @@ class MarketScanBot:
         logging.info("🌍 Starting FULL Market Scan...")
         clear_message_ids()
         
-        # 1. Fetch Symbols Concurrently
+        # 1. Fetch Symbols
         b_perp_t = asyncio.create_task(binance.get_perp_symbols())
         b_spot_t = asyncio.create_task(binance.get_spot_symbols())
         y_perp_t = asyncio.create_task(bybit.get_perp_symbols())
@@ -417,28 +416,25 @@ class MarketScanBot:
         
         bp, bs, yp, ys = await asyncio.gather(b_perp_t, b_spot_t, y_perp_t, y_spot_t)
         
-        # 2. Apply Priority Logic (Clean Set Math)
+        if not (bp or bs or yp or ys):
+            logging.error("❌ Failed to fetch symbols. Check proxies/connection!")
+            return
+
+        # 2. Deduplication Logic
         def clean(syms): return {s for s in syms if s not in CONFIG.IGNORED_SYMBOLS}
+        bp_s, bs_s, yp_s, ys_s = clean(bp), clean(bs), clean(yp), clean(ys)
         
-        bp_s, bs_s = clean(bp), clean(bs)
-        yp_s, ys_s = clean(yp), clean(ys)
-        
-        # Normalize for deduplication logic
         norm = lambda s: normalize_symbol(s)
-        
-        # Priority: BinPerp > BinSpot > BybPerp > BybSpot
         final_bp = bp_s
         final_bs = {s for s in bs_s if norm(s) not in {norm(x) for x in final_bp}}
-        
         exclude_bybit = {norm(x) for x in final_bp} | {norm(x) for x in final_bs}
         final_yp = {s for s in yp_s if norm(s) not in exclude_bybit}
-        
         exclude_all = exclude_bybit | {norm(x) for x in final_yp}
         final_ys = {s for s in ys_s if norm(s) not in exclude_all}
 
         logging.info(f"Scanning: B-Perp:{len(final_bp)} B-Spot:{len(final_bs)} Y-Perp:{len(final_yp)} Y-Spot:{len(final_ys)}")
 
-        # 3. Build Scan Tasks
+        # 3. Scan
         scan_tasks = []
         def add_tasks(client, syms, mkt, ex_name):
             for s in syms:
@@ -449,7 +445,6 @@ class MarketScanBot:
         add_tasks(bybit, final_yp, 'perp', 'Bybit')
         add_tasks(bybit, final_ys, 'spot', 'Bybit')
 
-        # 4. Execute Scan
         results: List[LevelHit] = []
         low_movements: List[LowMovementHit] = []
         
@@ -458,13 +453,9 @@ class MarketScanBot:
             results.extend(revs)
             if low: low_movements.append(low)
 
-        # 5. Reporting & Persistence
+        # 4. Reporting
         save_levels(results, self.utc_now.isoformat())
-        
-        # Send Full Report (Chunks)
         await self.send_full_report(results, low_movements)
-        
-        # Init Alert Message (Pinned/Updated message)
         await self.send_or_update_alert_report([]) 
 
     async def scan_symbol_all_tfs(self, client: ExchangeClient, symbol: str, market: str, exchange: str):
@@ -473,17 +464,17 @@ class MarketScanBot:
         
         for interval in ["1M", "1w", "1d"]:
             candles = await client.fetch_ohlcv(symbol, interval, market, limit=3)
-            
+            if not candles: continue
+
             # Logic 1: Reversal
             price, sig = check_reversal(candles)
             if price and sig:
-                # Check if current touches (already triggered)
                 if not current_candle_touched_price(candles, price):
                     reversals.append(LevelHit(exchange, symbol, market, interval, sig, price))
             
-            # Logic 2: Low Movement (Daily only)
+            # Logic 2: Low Movement
             if interval == "1d":
-                lm = check_low_movement(candles, threshold_percent=1.0)
+                lm = check_low_movement(candles, threshold_percent=2.5)
                 if lm is not None:
                     low_move = LowMovementHit(exchange, symbol, market, interval, lm)
                     
@@ -703,6 +694,5 @@ class MarketScanBot:
 if __name__ == "__main__":
     if os.name == 'nt':
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    
     bot = MarketScanBot()
     asyncio.run(bot.run())
