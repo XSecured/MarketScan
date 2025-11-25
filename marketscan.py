@@ -636,9 +636,7 @@ async def main():
             levels = load_levels_from_file()
             
             if not levels:
-                report_text = "💥 *LEVEL ALERTS* 💥
-
-❌ No levels got hit at this time."
+                report_text = "💥 *LEVEL ALERTS* 💥\n\n❌ No levels got hit at this time."
                 hits = []
             else:
                 hits = []
@@ -659,9 +657,7 @@ async def main():
                     # Re-use creation logic (hacky but works with existing format)
                     report_text = create_report_sections(hits)[0].replace("Reversal Level Scanner", "LEVEL ALERTS")
                 else:
-                    report_text = "💥 *LEVEL ALERTS* 💥
-
-❌ No levels got hit at this time."
+                    report_text = "💥 *LEVEL ALERTS* 💥\n\n❌ No levels got hit at this time."
 
             # --- Intelligent Message Editing (Ported Logic) ---
             prev_ids = load_level_message_ids()
@@ -738,9 +734,7 @@ async def main():
                 await asyncio.sleep(1)
 
             # 6. Initialize Alert Message
-            init_msg = "💥 *LEVEL ALERTS* 💥
-
-❌ No levels got hit at this time."
+            init_msg = "💥 *LEVEL ALERTS* 💥\n\n❌ No levels got hit at this time."
             ids = await safe_send_markdown(bot, chat_id, init_msg)
             save_level_message_ids(ids)
             
