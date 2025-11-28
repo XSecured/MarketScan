@@ -306,11 +306,14 @@ def save_message_ids(ids: List[int]):
 def load_message_ids() -> List[int]:
     if not os.path.exists(CONFIG.MSG_FILE): return []
     try:
-        with open(CONFIG.MSG_FILE) as f: return json.load(f).get("message_ids", [])
-    except: return []
+        with open(CONFIG.MSG_FILE) as f:
+            return json.load(f).get("message_ids", [])
+    except:
+        return []
 
 def clear_message_ids():
-    if os.path.exists(CONFIG.MSG_FILE): os.remove(CONFIG.MSG_FILE)
+    if os.path.exists(CONFIG.MSG_FILE):
+        os.remove(CONFIG.MSG_FILE)
 
 # ==========================================
 # MAIN BOT CLASS
@@ -522,15 +525,106 @@ class MarketScanBot:
         await self.send_chunks("\n".join(lines))
 
     async def send_or_update_alert_report(self, hits: List[LevelHit]):
-        # This handles the Price Check mode alerts (Simplified version for compatibility)
-        # Since we usually run Full Scan, this is just a placeholder for completeness or separate mode.
-        if not hits: return
+        """
+        Used in PRICE CHECK mode.
+        - On first run after full_scan (no IDs): sends new message(s) and stores IDs.
+        - On later price_check runs: edits existing message(s) instead of spamming new ones.
+        """
+        # Local helpers
+        def _clean_sym(s: str) -> str:
+            return s.replace("USDT", "")
         
-        lines = ["🚨 *PRICE ALERT HIT*", "═════════════════════"]
-        for h in hits:
-            lines.append(f"🎯 *{h.symbol}* ({h.interval}) hit ${h.level_price}")
-        
-        await self.send_chunks("\n".join(lines))
+        ts_local = self.utc_now.astimezone(timezone(timedelta(hours=3))).strftime("%d %b %H:%M UTC+3")
+
+        if not hits:
+            text = (
+                "🚨 *LEVEL ALERT SYSTEM*\n"
+                "═════════════════════\n"
+                "❌ No active level hits right now.\n"
+                "═════════════════════\n"
+                f"🕒 {ts_local}"
+            )
+        else:
+            lines = [
+                "🚨 *LEVEL ALERT SYSTEM*",
+                "═════════════════════",
+                f"⚡ *{len(hits)} LEVELS HIT!*",
+                ""
+            ]
+            # Group by interval & exchange
+            grouped: Dict[str, Dict[str, List[LevelHit]]] = {}
+            for h in hits:
+                grouped.setdefault(h.interval, {}).setdefault(h.exchange, []).append(h)
+            
+            # Sort intervals for readability
+            tf_labels = {"1M": "MONTHLY (1M)", "1w": "WEEKLY (1w)", "1d": "DAILY (1d)"}
+            for tf in ["1M", "1w", "1d"]:
+                if tf not in grouped: 
+                    continue
+                lines.append(f"📅 *{tf_labels.get(tf, tf)}*")
+                for ex_name, ex_icon in [("Binance", "🟡"), ("Bybit", "⚫")]:
+                    ex_hits = grouped[tf].get(ex_name, [])
+                    if not ex_hits: 
+                        continue
+                    ex_hits.sort(key=lambda x: x.symbol)
+                    lines.append(f"┌ {ex_icon} *{ex_name.upper()}*")
+                    for i, h in enumerate(ex_hits):
+                        prefix = "└" if i == len(ex_hits) - 1 else "│"
+                        side_icon = "🍏" if h.signal_type == "bullish" else "🔻"
+                        sym = _clean_sym(h.symbol)
+                        lines.append(
+                            f"{prefix} {side_icon} *{sym}* ➜ ${h.level_price:g}"
+                        )
+                    lines.append("")  # spacer
+            lines.append("═════════════════════")
+            lines.append(f"🕒 {ts_local}")
+            text = "\n".join(lines)
+
+        # Split into chunks respecting Telegram's 4k char limit
+        chunks: List[str] = []
+        temp = ""
+        for line in text.splitlines(keepends=True):
+            if len(temp) + len(line) > CONFIG.MAX_TG_CHARS:
+                chunks.append(temp)
+                temp = ""
+            temp += line
+        if temp.strip():
+            chunks.append(temp)
+
+        prev_ids = load_message_ids()
+        new_ids: List[int] = []
+
+        # Try to EDIT existing messages first
+        for idx, chunk in enumerate(chunks):
+            if idx < len(prev_ids):
+                msg_id = prev_ids[idx]
+                try:
+                    await self.tg_bot.edit_message_text(
+                        chat_id=CONFIG.CHAT_ID,
+                        message_id=msg_id,
+                        text=chunk,
+                        parse_mode='Markdown'
+                    )
+                    new_ids.append(msg_id)
+                    continue
+                except Exception as e:
+                    logging.warning(f"Edit failed for msg {msg_id}: {e}")
+
+            # If edit failed or no previous ID, send new
+            try:
+                m = await self.tg_bot.send_message(
+                    chat_id=CONFIG.CHAT_ID,
+                    text=chunk,
+                    parse_mode='Markdown'
+                )
+                new_ids.append(m.message_id)
+                await asyncio.sleep(0.3)
+            except Exception as e:
+                logging.error(f"TG Send Error (price_check): {e}")
+
+        # If there were more previous messages than current chunks, old extras are obsolete.
+        # We don't delete them automatically (Telegram API can delete if you want), but we drop their IDs.
+        save_message_ids(new_ids)
 
 if __name__ == "__main__":
     if os.name == 'nt': asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
