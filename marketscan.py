@@ -11,6 +11,7 @@ from itertools import cycle
 import aiohttp
 from telegram import Bot
 from tqdm.asyncio import tqdm
+import re
 
 # ==========================================
 # CONFIGURATION
@@ -511,90 +512,105 @@ class MarketScanBot:
     # --- NEW REPORTING FORMAT ---
     async def send_full_report(self, results: List[LevelHit], low_movements: List[LowMovementHit]):
         ts = self.utc_now.strftime("%d %b %H:%M UTC")
-        def _clean(s): return s.replace("USDT", "")
-        
+    
+        number_prefix_re = re.compile(r"^(1000|10000|100000|1000000)")
+    
+        def clean(s: str) -> str:
+            s = s.replace("USDT", "")
+            s = number_prefix_re.sub("", s)
+            return s
+    
+        def format_space_padded_grid(symbols: List[str], per_line: int = 3, col_width: int = 10) -> List[str]:
+            symbols = [clean(s) for s in sorted(symbols)]
+            lines = []
+            for i in range(0, len(symbols), per_line):
+                chunk = symbols[i:i+per_line]
+                padded = [sym.ljust(col_width) for sym in chunk]
+                lines.append("│ " + " ".join(padded))
+            return lines
+    
         lines = ["💳 *REVERSAL ALERTS*", "─────────────────────"]
-        
+    
         # 1. REVERSALS - Group by timeframe -> exchange -> direction
         grouped = {}
         for r in results:
-            grouped.setdefault(r.interval, {}).setdefault(r.exchange, {}).setdefault(r.signal_type, []).append(_clean(r.symbol))
-        
+            grouped.setdefault(r.interval, {}).setdefault(r.exchange, {}).setdefault(r.signal_type, []).append(r.symbol)
+    
         for tf_key, tf_label in [("1M", "MONTHLY (1M)"), ("1w", "WEEKLY (1w)"), ("1d", "DAILY (1d)")]:
-            if tf_key not in grouped: continue
-            
+            if tf_key not in grouped:
+                continue
+    
             tf_data = grouped[tf_key]
-            if not any(tf_data.values()): continue
-            
+            if not any(tf_data.values()):
+                continue
+    
             # Count Bull/Bear for header
             bull_total = sum(len(tf_data.get(ex, {}).get("bullish", [])) for ex in tf_data)
             bear_total = sum(len(tf_data.get(ex, {}).get("bearish", [])) for ex in tf_data)
             count_str = f"[{bull_total} Bull/{bear_total} Bear]" if bull_total or bear_total else "[0]"
-            
+    
             lines.append(f"\n📅 *{tf_label}* {count_str}")
-            
+    
             for ex, ex_icon in [("Binance", "🟡"), ("Bybit", "⚫")]:
-                if ex not in tf_data: continue
-                
+                if ex not in tf_data:
+                    continue
+    
                 ex_data = tf_data[ex]
                 bull_list = sorted(ex_data.get("bullish", []))
                 bear_list = sorted(ex_data.get("bearish", []))
-                
-                if not bull_list and not bear_list: continue
-                
-                lines.append(f"┌ {ex_icon} *{ex.upper()}*")
-                
+    
+                if not bull_list and not bear_list:
+                    continue
+    
+                total_symbols = len(bull_list) + len(bear_list)
+                lines.append(f"┌ {ex_icon} *{ex.upper()}* ({total_symbols} Symbols)")
+    
                 # Bullish section
                 if bull_list:
-                    lines.append("│ 🍏 *Bullish*")
-                    # Wrap long lists into multiple lines (8 symbols per line)
-                    for i in range(0, len(bull_list), 8):
-                        chunk = " ".join(bull_list[i:i+8])
-                        lines.append(f"│ {chunk}")
+                    lines.append(f"│ 🍏 *Bullish* ({len(bull_list)})")
+                    lines.extend(format_space_padded_grid(bull_list, per_line=3))
                     lines.append("│")  # Spacer
-                
-                # Bearish section  
+    
+                # Bearish section
                 if bear_list:
-                    lines.append("│ 🔻 *Bearish*")
-                    for i in range(0, len(bear_list), 8):
-                        chunk = " ".join(bear_list[i:i+8])
-                        lines.append(f"│ {chunk}")
-                
+                    lines.append(f"│ 🔻 *Bearish* ({len(bear_list)})")
+                    lines.extend(format_space_padded_grid(bear_list, per_line=3))
+    
                 lines.append("└")
-        
+    
         # 2. SQUEEZE - Top 30 per exchange
         if low_movements:
             lines.append("\n📉 *SQUEEZE ALERT (<1%)*")
             lines.append("─────────────────────")
-            
+    
             lm_grp = {"Binance": [], "Bybit": []}
             for x in low_movements:
                 if x.exchange in lm_grp:
                     lm_grp[x.exchange].append(x)
-            
+    
             for ex, ex_icon in [("Binance", "🟡"), ("Bybit", "⚫")]:
                 items = lm_grp.get(ex, [])
-                if not items: continue
-                
+                if not items:
+                    continue
+    
                 items.sort(key=lambda x: x.movement_percent)
                 top_items = items[:30]
                 total_count = len(items)
-                
+    
                 lines.append(f"┌ {ex_icon} *{ex.upper()}* (Top 30/{total_count})")
                 for i, item in enumerate(top_items):
-                    clean_sym = _clean(item.symbol)
+                    clean_sym = clean(item.symbol)
                     pct = f"{item.movement_percent:.2f}%"
-                    # Right-align percentages
-                    pct_pad = " " * (6 - len(pct)) + pct
+                    pct_pad = " " * (6 - len(pct)) + pct  # Right-align pct in 6 spaces
                     lines.append(f"│ {clean_sym}{pct_pad}")
-                
+    
                 if total_count > 30:
                     lines.append(f"│ ...and {total_count-30} more")
                 lines.append("└")
-        
+    
         lines.append("\n─────────────────────")
         lines.append(f"🕒 {ts}")
-        
+    
         await self.send_chunks("\n".join(lines))
 
     async def send_or_update_alert_report(self, hits: List[LevelHit]):
