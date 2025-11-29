@@ -481,133 +481,193 @@ class MarketScanBot:
         ts = self.utc_now.strftime("%d %b %H:%M UTC")
         def _clean(s): return s.replace("USDT", "")
         
-        lines = ["🚨 *REVERSAL SCAN*", "═════════════════════"]
+        lines = ["💳 *REVERSAL ALERTS*", "─────────────────────"]
         
-        # 1. Reversals
+        # 1. REVERSALS - Group by timeframe -> exchange -> direction
         grouped = {}
-        for r in results: grouped.setdefault(r.interval, {}).setdefault(r.exchange, []).append(r)
+        for r in results:
+            grouped.setdefault(r.interval, {}).setdefault(r.exchange, {}).setdefault(r.signal_type, []).append(_clean(r.symbol))
         
-        has_data = False
-        for tf_name, tf_key in [("MONTHLY", "1M"), ("WEEKLY", "1w"), ("DAILY", "1d")]:
+        for tf_key, tf_label in [("1M", "MONTHLY (1M)"), ("1w", "WEEKLY (1w)"), ("1d", "DAILY (1d)")]:
             if tf_key not in grouped: continue
             
-            # Check if this TF actually has items
-            if not any(grouped[tf_key].values()): continue
+            tf_data = grouped[tf_key]
+            if not any(tf_data.values()): continue
             
-            lines.append(f"\n📅 *{tf_name}*")
-            has_data = True
+            # Count Bull/Bear for header
+            bull_total = sum(len(tf_data.get(ex, {}).get("bullish", [])) for ex in tf_data)
+            bear_total = sum(len(tf_data.get(ex, {}).get("bearish", [])) for ex in tf_data)
+            count_str = f"[{bull_total} Bull/{bear_total} Bear]" if bull_total or bear_total else "[0]"
             
-            for ex in ["Binance", "Bybit"]:
-                hits = grouped[tf_key].get(ex, [])
-                if not hits: continue
+            lines.append(f"\n📅 *{tf_label}* {count_str}")
+            
+            for ex, ex_icon in [("Binance", "🟡"), ("Bybit", "⚫")]:
+                if ex not in tf_data: continue
                 
-                lines.append(f"┌ 🟡 *{ex.upper()}*" if ex=="Binance" else f"┌ ⚫ *{ex.upper()}*")
-                hits.sort(key=lambda x: x.symbol)
+                ex_data = tf_data[ex]
+                bull_list = sorted(ex_data.get("bullish", []))
+                bear_list = sorted(ex_data.get("bearish", []))
                 
-                for i, h in enumerate(hits):
-                    pre = "└" if i == len(hits)-1 else "│"
-                    icon = "🍏" if h.signal_type == "bullish" else "🔻"
-                    # Format: │ 🍏 *BTC* ➜ $95000
-                    lines.append(f"{pre} {icon} *{_clean(h.symbol)}* ➜ ${h.level_price:g}")
+                if not bull_list and not bear_list: continue
+                
+                lines.append(f"┌ {ex_icon} *{ex.upper()}*")
+                
+                # Bullish section
+                if bull_list:
+                    lines.append("│ 🍏 *Bullish*")
+                    # Wrap long lists into multiple lines (8 symbols per line)
+                    for i in range(0, len(bull_list), 8):
+                        chunk = " ".join(bull_list[i:i+8])
+                        lines.append(f"│ {chunk}")
+                    lines.append("│")  # Spacer
+                
+                # Bearish section  
+                if bear_list:
+                    lines.append("│ 🔻 *Bearish*")
+                    for i in range(0, len(bear_list), 8):
+                        chunk = " ".join(bear_list[i:i+8])
+                        lines.append(f"│ {chunk}")
+                
+                lines.append("└")
         
-        if not has_data:
-            lines.append("\n❌ No Reversals Found.")
-
-        # 2. Squeeze Alerts (Top 30)
+        # 2. SQUEEZE - Top 30 per exchange
         if low_movements:
-            lines.append("\n📉 *SQUEEZE ALERT (Top 30)*")
-            lm_grp = {"Binance": [], "Bybit": []}
-            for x in low_movements: 
-                if x.exchange in lm_grp: lm_grp[x.exchange].append(x)
+            lines.append("\n📉 *SQUEEZE ALERT (<1%)*")
+            lines.append("─────────────────────")
             
-            for ex in ["Binance", "Bybit"]:
+            lm_grp = {"Binance": [], "Bybit": []}
+            for x in low_movements:
+                if x.exchange in lm_grp:
+                    lm_grp[x.exchange].append(x)
+            
+            for ex, ex_icon in [("Binance", "🟡"), ("Bybit", "⚫")]:
                 items = lm_grp.get(ex, [])
                 if not items: continue
-                items.sort(key=lambda x: x.movement_percent)
-                top = items[:30] # Increased to 30
                 
-                lines.append(f"┌ 🟡 *{ex.upper()}*" if ex=="Binance" else f"┌ ⚫ *{ex.upper()}*")
-                for i, item in enumerate(top):
-                    pre = "└" if i == len(top)-1 else "│"
-                    lines.append(f"{pre} *{_clean(item.symbol)}* ➜ {item.movement_percent:.2f}%")
+                items.sort(key=lambda x: x.movement_percent)
+                top_items = items[:30]
+                total_count = len(items)
+                
+                lines.append(f"┌ {ex_icon} *{ex.upper()}* (Top 30/{total_count})")
+                for i, item in enumerate(top_items):
+                    clean_sym = _clean(item.symbol)
+                    pct = f"{item.movement_percent:.2f}%"
+                    # Right-align percentages
+                    pct_pad = " " * (6 - len(pct)) + pct
+                    lines.append(f"│ {clean_sym}{pct_pad}")
+                
+                if total_count > 30:
+                    lines.append(f"│ ...and {total_count-30} more")
+                lines.append("└")
         
-        lines.append("\n═════════════════════")
+        lines.append("\n─────────────────────")
         lines.append(f"🕒 {ts}")
         
         await self.send_chunks("\n".join(lines))
 
     async def send_or_update_alert_report(self, hits: List[LevelHit]):
         """
-        Used in PRICE CHECK mode.
-        - On first run after full_scan (no IDs): sends new message(s) and stores IDs.
-        - On later price_check runs: edits existing message(s) instead of spamming new ones.
+        Price Check Mode - Line-by-line SYMBOL @ $PRICE format
+        Edits existing messages or sends new ones.
         """
-        # Local helpers
         def _clean_sym(s: str) -> str:
             return s.replace("USDT", "")
         
+        def _fmt_price(p: float) -> str:
+            return f"${p:g}"
+        
         ts_local = self.utc_now.astimezone(timezone(timedelta(hours=3))).strftime("%d %b %H:%M UTC+3")
-
+    
         if not hits:
             text = (
-                "🚨 *LEVEL ALERT SYSTEM*\n"
-                "═════════════════════\n"
+                "🚨 *LEVEL ALERTS*\n"
+                "─────────────────────\n"
                 "❌ No active level hits right now.\n"
-                "═════════════════════\n"
+                "─────────────────────\n"
                 f"🕒 {ts_local}"
             )
         else:
             lines = [
-                "🚨 *LEVEL ALERT SYSTEM*",
-                "═════════════════════",
+                "🚨 *LEVEL ALERTS*",
+                "─────────────────────",
                 f"⚡ *{len(hits)} LEVELS HIT!*",
                 ""
             ]
-            # Group by interval & exchange
-            grouped: Dict[str, Dict[str, List[LevelHit]]] = {}
-            for h in hits:
-                grouped.setdefault(h.interval, {}).setdefault(h.exchange, []).append(h)
             
-            # Sort intervals for readability
-            tf_labels = {"1M": "MONTHLY (1M)", "1w": "WEEKLY (1w)", "1d": "DAILY (1d)"}
-            for tf in ["1M", "1w", "1d"]:
-                if tf not in grouped: 
-                    continue
-                lines.append(f"📅 *{tf_labels.get(tf, tf)}*")
-                for ex_name, ex_icon in [("Binance", "🟡"), ("Bybit", "⚫")]:
-                    ex_hits = grouped[tf].get(ex_name, [])
-                    if not ex_hits: 
-                        continue
-                    ex_hits.sort(key=lambda x: x.symbol)
-                    lines.append(f"┌ {ex_icon} *{ex_name.upper()}*")
-                    for i, h in enumerate(ex_hits):
-                        prefix = "└" if i == len(ex_hits) - 1 else "│"
-                        side_icon = "🍏" if h.signal_type == "bullish" else "🔻"
-                        sym = _clean_sym(h.symbol)
-                        lines.append(
-                            f"{prefix} {side_icon} *{sym}* ➜ ${h.level_price:g}"
-                        )
-                    lines.append("")  # spacer
-            lines.append("═════════════════════")
+            # Group by exchange -> timeframe -> direction
+            grouped: Dict[str, Dict[str, Dict[str, List[LevelHit]]]] = {}
+            for h in hits:
+                grouped.setdefault(h.exchange, {}).setdefault(h.interval, {}).setdefault(h.signal_type, []).append(h)
+            
+            exchanges = [("Binance", "🟡"), ("Bybit", "⚫")]
+            for ex_name, ex_icon in exchanges:
+                if ex_name not in grouped: continue
+                
+                ex_data = grouped[ex_name]
+                
+                # Count total hits and B/S split for header
+                total_hits = 0
+                bull_count = 0
+                bear_count = 0
+                for tf_data in ex_data.values():
+                    bull_count += len(tf_data.get("bullish", []))
+                    bear_count += len(tf_data.get("bearish", []))
+                total_hits = bull_count + bear_count
+                
+                if total_hits == 0: continue
+                
+                header = f"{ex_icon} *{ex_name.upper()} ({total_hits} Hits, {bear_count}B/{bull_count}S)*"
+                lines.append(f"┌ {header}")
+                
+                # Sort timeframes
+                tf_order = ["1M", "1w", "1d"]
+                for tf in tf_order:
+                    if tf not in ex_data: continue
+                    
+                    tf_data = ex_data[tf]
+                    bull_hits = sorted(tf_data.get("bullish", []), key=lambda x: x.symbol)
+                    bear_hits = sorted(tf_data.get("bearish", []), key=lambda x: x.symbol)
+                    
+                    # Bullish section
+                    if bull_hits:
+                        lines.append("│ 🍏 *Bullish*")
+                        for hit in bull_hits:
+                            sym = hit.symbol  # Keep full symbol for price alerts
+                            price = _fmt_price(hit.level_price)
+                            lines.append(f"│ {sym} @ {price}")
+                        lines.append("│")  # Spacer
+                    
+                    # Bearish section
+                    if bear_hits:
+                        lines.append("│ 🔻 *Bearish*")
+                        for hit in bear_hits:
+                            sym = hit.symbol
+                            price = _fmt_price(hit.level_price)
+                            lines.append(f"│ {sym} @ {price}")
+                
+                lines.append("└")
+                lines.append("")  # Exchange spacer
+            
+            lines.append("─────────────────────")
             lines.append(f"🕒 {ts_local}")
             text = "\n".join(lines)
-
-        # Split into chunks respecting Telegram's 4k char limit
-        chunks: List[str] = []
-        temp = ""
+    
+        # Smart chunking + Edit existing messages
+        chunks = []
+        temp_chunk = ""
         for line in text.splitlines(keepends=True):
-            if len(temp) + len(line) > CONFIG.MAX_TG_CHARS:
-                chunks.append(temp)
-                temp = ""
-            temp += line
-        if temp.strip():
-            chunks.append(temp)
-
+            if len(temp_chunk) + len(line) > CONFIG.MAX_TG_CHARS:
+                chunks.append(temp_chunk)
+                temp_chunk = ""
+            temp_chunk += line
+        if temp_chunk.strip():
+            chunks.append(temp_chunk)
+    
         prev_ids = load_message_ids()
-        new_ids: List[int] = []
-
-        # Try to EDIT existing messages first
+        new_ids = []
+    
         for idx, chunk in enumerate(chunks):
+            # Try to edit existing message first
             if idx < len(prev_ids):
                 msg_id = prev_ids[idx]
                 try:
@@ -621,8 +681,8 @@ class MarketScanBot:
                     continue
                 except Exception as e:
                     logging.warning(f"Edit failed for msg {msg_id}: {e}")
-
-            # If edit failed or no previous ID, send new
+    
+            # Send new message if edit failed
             try:
                 m = await self.tg_bot.send_message(
                     chat_id=CONFIG.CHAT_ID,
@@ -633,9 +693,7 @@ class MarketScanBot:
                 await asyncio.sleep(0.3)
             except Exception as e:
                 logging.error(f"TG Send Error (price_check): {e}")
-
-        # If there were more previous messages than current chunks, old extras are obsolete.
-        # We don't delete them automatically (Telegram API can delete if you want), but we drop their IDs.
+    
         save_message_ids(new_ids)
 
 if __name__ == "__main__":
