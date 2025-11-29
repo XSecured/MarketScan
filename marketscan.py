@@ -347,16 +347,32 @@ class MarketScanBot:
             logging.info("⚠️ No levels found.")
             await self.send_or_update_alert_report([])
             return
-
+    
         tasks = []
         for key, data in levels_data.items():
             client = binance if data['exchange'] == 'Binance' else bybit
             tasks.append(self.check_single_level(client, data))
         
         hits = []
+        hit_keys = set()
+        
         for f in tqdm(asyncio.as_completed(tasks), total=len(tasks), desc="Checking Levels"):
             res = await f
-            if res: hits.append(res)
+            if res:
+                hits.append(res)
+                hit_keys.add(f"{res.exchange}_{res.symbol}_{res.market}_{res.interval}")  # ← NEW: Track key
+        
+        # NEW: Clean hit levels
+        if hit_keys:
+            levels_data = load_levels()
+            levels_dict = levels_data.get("levels", {})
+            for key in hit_keys:
+                levels_dict.pop(key, None)
+            levels_data["levels"] = levels_dict
+            levels_data["last_updated"] = self.utc_now.isoformat()
+            with open(CONFIG.LEVELS_FILE, "w") as f:
+                json.dump(levels_data, f, indent=2)
+            logging.info(f"🗑️ Cleaned {len(hit_keys)} hit levels")
         
         await self.send_or_update_alert_report(hits)
 
@@ -364,27 +380,20 @@ class MarketScanBot:
         candles = await client.fetch_ohlcv(data['symbol'], data['interval'], data['market'], limit=2)
         if not candles:
             return None
-
+        
         curr = candles[0]
-
-        # Backward compatible: prefer 'level_price', fallback to 'price'
         target = data.get('level_price', data.get('price'))
         if target is None:
             return None
-
+        
         if curr.low <= target <= curr.high:
             return LevelHit(
-                exchange=data['exchange'],
-                symbol=data['symbol'],
-                market=data['market'],
-                interval=data['interval'],
-                signal_type=data['signal_type'],
-                level_price=target,
-                current_price=curr.close,
-                timestamp=data.get('timestamp', "")
+                exchange=data['exchange'], symbol=data['symbol'], market=data['market'],
+                interval=data['interval'], signal_type=data['signal_type'],
+                level_price=target, current_price=curr.close, timestamp=data.get('timestamp', "")
             )
         return None
-
+        
     async def run_full_scan(self, binance, bybit):
         logging.info("🌍 Starting FULL Market Scan...")
         clear_message_ids()
@@ -416,7 +425,7 @@ class MarketScanBot:
         # 3. Scan Setup
         async def scan_one(client, s, mkt, ex):
             revs, low_m = [], None
-            current_time = datetime.now(timezone.utc).isoformat()
+            current_time = datetime.now(timezone.utc).isoformat()  # ← NEW: Timestamp
             
             for interval in ["1M", "1w", "1d"]:
                 candles = await client.fetch_ohlcv(s, interval, mkt)
@@ -424,7 +433,7 @@ class MarketScanBot:
                 
                 p, sig = check_reversal(candles)
                 if p and sig and not current_candle_touched_price(candles, p):
-                    revs.append(LevelHit(ex, s, mkt, interval, sig, p, timestamp=current_time))
+                    revs.append(LevelHit(ex, s, mkt, interval, sig, p, timestamp=current_time))  # ← ADD timestamp
                 
                 if interval == "1d":
                     v = check_low_movement(candles, 1.0)
