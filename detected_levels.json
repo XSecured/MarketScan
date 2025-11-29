@@ -1,5 +1,5 @@
 {
-  "last_updated": "2025-11-29T14:50:16.777028+00:00",
+  "last_updated": "2025-11-29T14:58:13.005228+00:00",
   "levels": {
     "Bybit_1000TAGUSDT_perp_1d": {
       "exchange": "Bybit",
@@ -3264,17 +3264,6 @@
       "interval": "1M",
       "signal_type": "bearish",
       "level_price": 2.5294,
-      "current_price": 0.0,
-      "timestamp": "2025-11-29T14:51:10.245569+00:00",
-      "impact_percent": 0.0
-    },
-    "Bybit_0GUSDT_perp_1d": {
-      "exchange": "Bybit",
-      "symbol": "0GUSDT",
-      "market": "perp",
-      "interval": "1d",
-      "signal_type": "bearish",
-      "level_price": 1.2408,
       "current_price": 0.0,
       "timestamp": "2025-11-29T14:51:10.245569+00:00",
       "impact_percent": 0.0
