@@ -1,3 +1,15 @@
 {
-  "hits": []
+  "hits": [
+    {
+      "exchange": "Binance",
+      "symbol": "TAKEUSDT",
+      "market": "perp",
+      "interval": "1d",
+      "signal_type": "bearish",
+      "level_price": 0.30666,
+      "current_price": 0.30589,
+      "timestamp": "2025-11-29T12:51:49.736592+00:00",
+      "impact_percent": 0.2510924150524988
+    }
+  ]
 }
