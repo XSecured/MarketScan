@@ -57,7 +57,7 @@ jobs:
         git config --local user.name  "Market Scanner Bot"
 
         # stage only the files we care about
-        git add detected_levels.json level_alert_message.json
+        git add detected_levels.json level_alert_message.json accumulated_hits.json
 
         # commit if there is anything new or deleted
         git diff --cached --quiet || git commit -m "auto: update level files $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
