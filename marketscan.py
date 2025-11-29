@@ -416,19 +416,21 @@ class MarketScanBot:
         # 3. Scan Setup
         async def scan_one(client, s, mkt, ex):
             revs, low_m = [], None
+            current_time = datetime.now(timezone.utc).isoformat()
+            
             for interval in ["1M", "1w", "1d"]:
                 candles = await client.fetch_ohlcv(s, interval, mkt)
                 if not candles: continue
                 
                 p, sig = check_reversal(candles)
                 if p and sig and not current_candle_touched_price(candles, p):
-                    revs.append(LevelHit(ex, s, mkt, interval, sig, p))
+                    revs.append(LevelHit(ex, s, mkt, interval, sig, p, timestamp=current_time))
                 
                 if interval == "1d":
                     v = check_low_movement(candles, 1.0)
                     if v is not None:
                         low_m = LowMovementHit(ex, s, mkt, interval, v)
-            return revs, low_m, True # True = Success
+            return revs, low_m, True
 
         # 4. Create Tasks
         tasks = []
@@ -625,8 +627,8 @@ class MarketScanBot:
                     if tf not in ex_data: continue
                     
                     tf_data = ex_data[tf]
-                    bull_hits = sorted(tf_data.get("bullish", []), key=lambda x: x.symbol)
-                    bear_hits = sorted(tf_data.get("bearish", []), key=lambda x: x.symbol)
+                    bull_hits = sorted(tf_data.get("bullish", []), key=lambda x: x.timestamp, reverse=True)
+                    bear_hits = sorted(tf_data.get("bearish", []), key=lambda x: x.timestamp, reverse=True)
                     
                     # Bullish section
                     if bull_hits:
