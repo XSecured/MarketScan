@@ -601,25 +601,14 @@ class MarketScanBot:
         """
         Price Check Mode - Line-by-line SYMBOL @ $PRICE format
         Edits existing messages or sends new ones.
-        ACCUMULATES hits across hours + sorts by timestamp + impact%
+        Grouped by exchange and timeframe with counts, no impact percent.
         """
-        def _clean_sym(s: str) -> str:
-            return s.replace("USDT", "")
-        
         def _fmt_price(p: float) -> str:
             return f"${p:g}"
         
-        def _fmt_impact(pct: float) -> str:
-            return f"({pct:.2f}%)"  # 🆕 NEW: Impact display
-        
         ts_local = self.utc_now.astimezone(timezone(timedelta(hours=3))).strftime("%d %b %H:%M UTC+3")
         
-        # 🆕 ACCUMULATION: Load previous + add new hits
-        prev_hits = load_accumulated_hits()
-        all_hits = prev_hits + hits
-        save_accumulated_hits(all_hits)
-        
-        if not all_hits:
+        if not hits:
             text = (
                 "🚨 *LEVEL ALERTS*\n"
                 "─────────────────────\n"
@@ -631,76 +620,69 @@ class MarketScanBot:
             lines = [
                 "🚨 *LEVEL ALERTS*",
                 "─────────────────────",
-                f"⚡ *{len(all_hits)} LEVELS HIT!*",  # 🆕 all_hits instead of hits
+                f"⚡ *{len(hits)} LEVELS HIT{'S' if len(hits) != 1 else ''}!*",
                 ""
             ]
-            
+    
             # Group by exchange -> timeframe -> direction
-            grouped: Dict[str, Dict[str, Dict[str, List[LevelHit]]]] = {}
-            for h in all_hits:  # 🆕 all_hits instead of hits
+            grouped = {}
+            for h in hits:
                 grouped.setdefault(h.exchange, {}).setdefault(h.interval, {}).setdefault(h.signal_type, []).append(h)
             
             exchanges = [("Binance", "🟡"), ("Bybit", "⚫")]
             for ex_name, ex_icon in exchanges:
-                if ex_name not in grouped: continue
+                if ex_name not in grouped:
+                    continue
                 
                 ex_data = grouped[ex_name]
-                
-                # Count total hits and B/S split for header
-                total_hits = 0
-                bull_count = 0
-                bear_count = 0
-                for tf_data in ex_data.values():
-                    bull_count += len(tf_data.get("bullish", []))
-                    bear_count += len(tf_data.get("bearish", []))
-                total_hits = bull_count + bear_count
-                
-                if total_hits == 0: continue
-                
-                header = f"{ex_icon} *{ex_name.upper()} ({total_hits} Hits, {bear_count}B/{bull_count}S)*"
-                lines.append(f"┌ {header}")
-                
-                # Sort timeframes
+    
+                # Count total hits per exchange
+                total_hits = sum(len(tf_data.get("bullish", [])) + len(tf_data.get("bearish", [])) for tf_data in ex_data.values())
+                if total_hits == 0:
+                    continue
+    
+                lines.append(f"┌ {ex_icon} *{ex_name.upper()} ({total_hits} Hit{'s' if total_hits != 1 else ''})*")
+    
                 tf_order = ["1M", "1w", "1d"]
+                tf_label_map = {"1M": "📅 1M", "1w": "📅 1w", "1d": "📅 1d"}
+    
                 for tf in tf_order:
-                    if tf not in ex_data: continue
-                    
+                    if tf not in ex_data:
+                        continue
+    
                     tf_data = ex_data[tf]
-                    # 🆕 DUAL SORT: timestamp DESC, impact_percent ASC (lowest % = most recent)
-                    bull_hits = sorted(tf_data.get("bullish", []), 
-                                     key=lambda x: (x.timestamp, x.impact_percent), 
-                                     reverse=False)
-                    bear_hits = sorted(tf_data.get("bearish", []), 
-                                     key=lambda x: (x.timestamp, x.impact_percent), 
-                                     reverse=False)
-                    
-                    # Bullish section
+    
+                    bull_hits = tf_data.get("bullish", [])
+                    bear_hits = tf_data.get("bearish", [])
+    
+                    bull_count = len(bull_hits)
+                    bear_count = len(bear_hits)
+    
+                    lines.append(f"{tf_label_map.get(tf, tf)} ({bull_count} Bullish, {bear_count} Bearish)")
+    
                     if bull_hits:
-                        lines.append("│ 🍏 *Bullish*")
+                        lines.append("│ 🍏 Bullish")
                         for hit in bull_hits:
-                            sym = hit.symbol  # Keep full symbol for price alerts
+                            sym = hit.symbol
                             price = _fmt_price(hit.level_price)
-                            impact = _fmt_impact(hit.impact_percent)  # 🆕 Show impact
-                            lines.append(f"│ {sym} @ {price} {impact}")
+                            lines.append(f"│ {sym} @ {price}")
                         lines.append("│")  # Spacer
-                    
-                    # Bearish section
+    
                     if bear_hits:
-                        lines.append("│ 🔻 *Bearish*")
+                        lines.append("│ 🔻 Bearish")
                         for hit in bear_hits:
                             sym = hit.symbol
                             price = _fmt_price(hit.level_price)
-                            impact = _fmt_impact(hit.impact_percent)  # 🆕 Show impact
-                            lines.append(f"│ {sym} @ {price} {impact}")
-                
+                            lines.append(f"│ {sym} @ {price}")
+    
                 lines.append("└")
-                lines.append("")  # Exchange spacer
-            
+                lines.append("")
+    
             lines.append("─────────────────────")
             lines.append(f"🕒 {ts_local}")
             text = "\n".join(lines)
     
-        # Smart chunking + Edit existing messages (UNCHANGED)
+        # Existing chunking and message edit/send logic unchanged
         chunks = []
         temp_chunk = ""
         for line in text.splitlines(keepends=True):
@@ -715,7 +697,6 @@ class MarketScanBot:
         new_ids = []
     
         for idx, chunk in enumerate(chunks):
-            # Try to edit existing message first
             if idx < len(prev_ids):
                 msg_id = prev_ids[idx]
                 try:
@@ -730,7 +711,6 @@ class MarketScanBot:
                 except Exception as e:
                     logging.warning(f"Edit failed for msg {msg_id}: {e}")
     
-            # Send new message if edit failed
             try:
                 m = await self.tg_bot.send_message(
                     chat_id=CONFIG.CHAT_ID,
