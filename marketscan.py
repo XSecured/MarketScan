@@ -377,21 +377,30 @@ class MarketScanBot:
             res = await f
             if res:
                 hits.append(res)
-                hit_keys.add(f"{res.exchange}_{res.symbol}_{res.market}_{res.interval}")  # ← NEW: Track key
-        
-        # NEW: Clean hit levels
+                hit_keys.add(f"{res.exchange}_{res.symbol}_{res.market}_{res.interval}")
+
+        # ==========================================
+        # ✅ CORRECTED CLEANUP LOGIC
+        # ==========================================
         if hit_keys:
-            levels_data = load_levels()
-            levels_dict = levels_data.get("levels", {})
+            # We already have 'levels_data' (the dict) from the start of the function.
+            # We just need to remove the keys from it directly.
             for key in hit_keys:
-                levels_dict.pop(key, None)
-            levels_data["levels"] = levels_dict
-            levels_data["last_updated"] = self.utc_now.isoformat()
+                levels_data.pop(key, None)
+            
+            # Reconstruct the full JSON structure to save
+            full_save_data = {
+                "last_updated": self.utc_now.isoformat(),
+                "levels": levels_data
+            }
+            
             with open(CONFIG.LEVELS_FILE, "w") as f:
-                json.dump(levels_data, f, indent=2)
+                json.dump(full_save_data, f, indent=2)
+            
             logging.info(f"🗑️ Cleaned {len(hit_keys)} hit levels")
         
         await self.send_or_update_alert_report(hits)
+
 
     async def check_single_level(self, client: ExchangeClient, data: dict) -> Optional[LevelHit]:
         candles = await client.fetch_ohlcv(data['symbol'], data['interval'], data['market'], limit=2)
