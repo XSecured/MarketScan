@@ -362,14 +362,26 @@ class MarketScanBot:
 
     async def check_single_level(self, client: ExchangeClient, data: dict) -> Optional[LevelHit]:
         candles = await client.fetch_ohlcv(data['symbol'], data['interval'], data['market'], limit=2)
-        if not candles: return None
+        if not candles:
+            return None
+
         curr = candles[0]
-        target = data['price']
+
+        # Backward compatible: prefer 'level_price', fallback to 'price'
+        target = data.get('level_price', data.get('price'))
+        if target is None:
+            return None
+
         if curr.low <= target <= curr.high:
             return LevelHit(
-                exchange=data['exchange'], symbol=data['symbol'], market=data['market'],
-                interval=data['interval'], signal_type=data['signal_type'],
-                level_price=target, current_price=curr.close, timestamp=data['timestamp']
+                exchange=data['exchange'],
+                symbol=data['symbol'],
+                market=data['market'],
+                interval=data['interval'],
+                signal_type=data['signal_type'],
+                level_price=target,
+                current_price=curr.close,
+                timestamp=data.get('timestamp', "")
             )
         return None
 
