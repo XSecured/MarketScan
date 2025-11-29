@@ -53,7 +53,7 @@ class Candle:
     low: float
     close: float
 
-@dataclass
+@dataclass 
 class LevelHit:
     exchange: str
     symbol: str
@@ -63,6 +63,7 @@ class LevelHit:
     level_price: float
     current_price: float = 0.0
     timestamp: str = ""
+    impact_percent: float = 0.0
 
     def to_dict(self):
         return asdict(self)
@@ -299,6 +300,21 @@ def save_levels(results: List[LevelHit], utc_now_str: str):
     with open(CONFIG.LEVELS_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
+def load_accumulated_hits() -> List[LevelHit]:
+    try:
+        if os.path.exists("accumulated_hits.json"):
+            with open("accumulated_hits.json", "r") as f:
+                data = json.load(f)
+                return [LevelHit(**h) for h in data.get("hits", [])]
+    except:
+        pass
+    return []
+
+def save_accumulated_hits(hits: List[LevelHit]):
+    data = {"hits": [h.to_dict() for h in hits]}
+    with open("accumulated_hits.json", "w") as f:
+        json.dump(data, f, indent=2)
+        
 def save_message_ids(ids: List[int]):
     with open(CONFIG.MSG_FILE, "w") as f:
         json.dump({"message_ids": ids, "timestamp": datetime.now(timezone.utc).isoformat()}, f)
@@ -378,7 +394,7 @@ class MarketScanBot:
 
     async def check_single_level(self, client: ExchangeClient, data: dict) -> Optional[LevelHit]:
         candles = await client.fetch_ohlcv(data['symbol'], data['interval'], data['market'], limit=2)
-        if not candles:
+        if not candles: 
             return None
         
         curr = candles[0]
@@ -387,10 +403,15 @@ class MarketScanBot:
             return None
         
         if curr.low <= target <= curr.high:
+            hit_time = datetime.now(timezone.utc).isoformat()  # 🆕 Hit time
+            impact_percent = abs(curr.close - target) / target * 100  # 🆕 Impact %
+            
             return LevelHit(
                 exchange=data['exchange'], symbol=data['symbol'], market=data['market'],
                 interval=data['interval'], signal_type=data['signal_type'],
-                level_price=target, current_price=curr.close, timestamp=data.get('timestamp', "")
+                level_price=target, current_price=curr.close,
+                timestamp=hit_time,
+                impact_percent=impact_percent
             )
         return None
         
@@ -580,6 +601,7 @@ class MarketScanBot:
         """
         Price Check Mode - Line-by-line SYMBOL @ $PRICE format
         Edits existing messages or sends new ones.
+        ACCUMULATES hits across hours + sorts by timestamp + impact%
         """
         def _clean_sym(s: str) -> str:
             return s.replace("USDT", "")
@@ -587,9 +609,17 @@ class MarketScanBot:
         def _fmt_price(p: float) -> str:
             return f"${p:g}"
         
+        def _fmt_impact(pct: float) -> str:
+            return f"({pct:.2f}%)"  # 🆕 NEW: Impact display
+        
         ts_local = self.utc_now.astimezone(timezone(timedelta(hours=3))).strftime("%d %b %H:%M UTC+3")
-    
-        if not hits:
+        
+        # 🆕 ACCUMULATION: Load previous + add new hits
+        prev_hits = load_accumulated_hits()
+        all_hits = prev_hits + hits
+        save_accumulated_hits(all_hits)
+        
+        if not all_hits:
             text = (
                 "🚨 *LEVEL ALERTS*\n"
                 "─────────────────────\n"
@@ -601,13 +631,13 @@ class MarketScanBot:
             lines = [
                 "🚨 *LEVEL ALERTS*",
                 "─────────────────────",
-                f"⚡ *{len(hits)} LEVELS HIT!*",
+                f"⚡ *{len(all_hits)} LEVELS HIT!*",  # 🆕 all_hits instead of hits
                 ""
             ]
             
             # Group by exchange -> timeframe -> direction
             grouped: Dict[str, Dict[str, Dict[str, List[LevelHit]]]] = {}
-            for h in hits:
+            for h in all_hits:  # 🆕 all_hits instead of hits
                 grouped.setdefault(h.exchange, {}).setdefault(h.interval, {}).setdefault(h.signal_type, []).append(h)
             
             exchanges = [("Binance", "🟡"), ("Bybit", "⚫")]
@@ -636,8 +666,13 @@ class MarketScanBot:
                     if tf not in ex_data: continue
                     
                     tf_data = ex_data[tf]
-                    bull_hits = sorted(tf_data.get("bullish", []), key=lambda x: x.timestamp, reverse=True)
-                    bear_hits = sorted(tf_data.get("bearish", []), key=lambda x: x.timestamp, reverse=True)
+                    # 🆕 DUAL SORT: timestamp DESC, impact_percent ASC (lowest % = most recent)
+                    bull_hits = sorted(tf_data.get("bullish", []), 
+                                     key=lambda x: (x.timestamp, x.impact_percent), 
+                                     reverse=False)
+                    bear_hits = sorted(tf_data.get("bearish", []), 
+                                     key=lambda x: (x.timestamp, x.impact_percent), 
+                                     reverse=False)
                     
                     # Bullish section
                     if bull_hits:
@@ -645,7 +680,8 @@ class MarketScanBot:
                         for hit in bull_hits:
                             sym = hit.symbol  # Keep full symbol for price alerts
                             price = _fmt_price(hit.level_price)
-                            lines.append(f"│ {sym} @ {price}")
+                            impact = _fmt_impact(hit.impact_percent)  # 🆕 Show impact
+                            lines.append(f"│ {sym} @ {price} {impact}")
                         lines.append("│")  # Spacer
                     
                     # Bearish section
@@ -654,7 +690,8 @@ class MarketScanBot:
                         for hit in bear_hits:
                             sym = hit.symbol
                             price = _fmt_price(hit.level_price)
-                            lines.append(f"│ {sym} @ {price}")
+                            impact = _fmt_impact(hit.impact_percent)  # 🆕 Show impact
+                            lines.append(f"│ {sym} @ {price} {impact}")
                 
                 lines.append("└")
                 lines.append("")  # Exchange spacer
@@ -663,7 +700,7 @@ class MarketScanBot:
             lines.append(f"🕒 {ts_local}")
             text = "\n".join(lines)
     
-        # Smart chunking + Edit existing messages
+        # Smart chunking + Edit existing messages (UNCHANGED)
         chunks = []
         temp_chunk = ""
         for line in text.splitlines(keepends=True):
