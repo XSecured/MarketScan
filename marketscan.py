@@ -194,7 +194,7 @@ class ExchangeClient:
         self.session = session
         self.proxies = proxy_pool
         # Higher concurrency only if we have proxies, otherwise limit strictly
-        limit = CONFIG.MAX_CONCURRENCY if proxy_pool.proxies else 5
+        limit = CONFIG.MAX_CONCURRENCY if not proxy_pool.queue.empty() else 5
         self.sem = asyncio.Semaphore(limit)
 
     async def _request(self, url: str, params: dict = None) -> Any:
