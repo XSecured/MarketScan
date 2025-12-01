@@ -77,7 +77,7 @@ class LevelHit:
             "interval": self.interval,
             "price": self.level_price,
             "signal_type": self.signal_type,
-            "timestamp": self.timestamp
+            "timestamp": self.timestamp,
             "hit_timestamp": self.hit_timestamp
         }
 
