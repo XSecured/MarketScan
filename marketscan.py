@@ -597,7 +597,7 @@ class MarketScanBot:
                 except Exception as e:
                     logging.warning(f"⚠️ {name} fetch error: {e}")
                 
-                wait_time = 2 * (attempt + 1)
+                wait_time = 0.5 * (attempt + 1)
                 logging.warning(f"⚠️ {name} returned empty/failed. Retrying in {wait_time}s... (Attempt {attempt+1}/{max_attempts})")
                 await asyncio.sleep(wait_time)
             
