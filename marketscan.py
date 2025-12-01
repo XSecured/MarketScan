@@ -13,6 +13,7 @@ import aiohttp
 from telegram import Bot
 from telegram.error import BadRequest
 from tqdm.asyncio import tqdm
+from redis.asyncio import Redis
 
 # ==========================================
 # CONFIGURATION
@@ -25,11 +26,7 @@ class Config:
     MAX_RETRIES: int = 3
     MAX_TG_CHARS: int = 4000
     MAX_CONCURRENCY: int = 50
-    DAILY_HITS_FILE: str = "daily_hits.json"
-    
-    # Files
-    LEVELS_FILE: str = "detected_levels.json"
-    MSG_FILE: str = "level_alert_message.json"
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     
     # Environment
     TELEGRAM_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -328,58 +325,133 @@ def check_low_movement(candles: List[Candle], threshold_percent: float = 1.0) ->
 # STATE & UTILS
 # ==========================================
 
-def load_levels() -> Dict[str, Any]:
-    try:
-        if os.path.exists(CONFIG.LEVELS_FILE):
-            with open(CONFIG.LEVELS_FILE, "r") as f:
-                return json.load(f).get("levels", {})
-    except Exception: pass
-    return {}
+import json
+from redis.asyncio import Redis
+from typing import List
 
-def save_levels(results: List[LevelHit], utc_now_str: str):
-    data = {"last_updated": utc_now_str, "levels": {}}
-    for r in results:
-        key = f"{r.exchange}_{r.symbol}_{r.market}_{r.interval}"
-        data["levels"][key] = r.to_dict()
-    with open(CONFIG.LEVELS_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+class RedisManager:
+    def __init__(self, redis_url: str, bot_prefix: str = "reversal_bot"):
+        """
+        Initializes Redis connection and defines namespaced keys.
+        
+        Args:
+            redis_url: Connection string (e.g., redis://localhost:6379/0)
+            bot_prefix: Namespace to separate data if running multiple bots.
+        """
+        self.redis = Redis.from_url(redis_url, decode_responses=True)
+        self.prefix = bot_prefix
+        
+        # Key Patterns
+        # Hits and Messages are still collections, so they use single keys
+        self.KEY_HITS = f"{bot_prefix}:daily_hits"
+        self.KEY_MSGS = f"{bot_prefix}:message_ids"
+        
+        # NOTE: Levels are stored as individual keys:
+        # {prefix}:level:{exchange}:{symbol}:{interval}
 
-def load_daily_hits() -> List[dict]:
-    if not os.path.exists(CONFIG.DAILY_HITS_FILE):
-        return []
-    try:
-        with open(CONFIG.DAILY_HITS_FILE, "r") as f:
-            data = json.load(f)
-            # Optional: clear hits if they are from a previous day?
-            # For now, let's just load them.
-            return data.get("hits", [])
-    except:
-        return []
+    async def close(self):
+        """Closes the Redis connection."""
+        await self.redis.close()
 
-def save_daily_hits(hits_data: List[dict]):
-    # Sort by hit_timestamp descending (Newest first) before saving
-    hits_data.sort(key=lambda x: x.get("hit_timestamp", 0), reverse=True)
-    
-    with open(CONFIG.DAILY_HITS_FILE, "w") as f:
-        json.dump({"last_updated": datetime.now(timezone.utc).isoformat(), "hits": hits_data}, f, indent=2)
+    # --- 1. INDIVIDUAL LEVELS (String Keys with TTL) ---
+    async def save_levels(self, results: List[LevelHit]):
+        """
+        Saves levels as individual keys.
+        Updates TTL to 3 days for any level found in the scan.
+        """
+        if not results:
+            return
+
+        # Use pipeline for atomic high-speed writing
+        async with self.redis.pipeline() as pipe:
+            for r in results:
+                # Key format enforces "One Level Per Timeframe"
+                key = f"{self.prefix}:level:{r.exchange}:{r.symbol}:{r.interval}"
+                
+                # Save Data
+                await pipe.set(key, json.dumps(r.to_dict()))
+                
+                # Set/Reset TTL to 3 Days (259200 seconds)
+                # If a level is found again tomorrow, this resets the timer back to 3 days.
+                await pipe.expire(key, 259200) 
+            
+            await pipe.execute()
+
+    async def get_all_levels(self) -> List[dict]:
+        """
+        Efficiently retrieves all active level keys using SCAN + MGET batching.
+        """
+        # 1. Scan for all keys matching the bot's level pattern
+        cursor = '0'
+        keys = []
+        pattern = f"{self.prefix}:level:*"
+        
+        # Loop until SCAN returns cursor 0 (iteration complete)
+        while cursor != 0:
+            cursor, chunk = await self.redis.scan(cursor=cursor, match=pattern, count=1000)
+            keys.extend(chunk)
+            
+        if not keys:
+            return []
+
+        # 2. Fetch all values in batches (Network Optimization)
+        values = []
+        chunk_size = 500 # Fetch 500 levels per network round-trip
+        
+        for i in range(0, len(keys), chunk_size):
+            batch_keys = keys[i : i + chunk_size]
+            batch_vals = await self.redis.mget(batch_keys)
+            # Filter out any None values (just in case a key expired mid-process)
+            values.extend([v for v in batch_vals if v])
+            
+        return [json.loads(v) for v in values]
+
+    async def remove_level(self, exchange: str, symbol: str, interval: str):
+        """
+        Deletes a specific level key (e.g., after it has been hit).
+        """
+        key = f"{self.prefix}:level:{exchange}:{symbol}:{interval}"
+        await self.redis.delete(key)
+
+    # --- 2. DAILY HITS (Sorted Set) ---
+    async def clear_daily_hits(self):
+        """Clears the daily hits collection (Run at start of daily scan)."""
+        await self.redis.delete(self.KEY_HITS)
+
+    async def add_hit(self, hit: LevelHit):
+        """
+        Adds a hit to the sorted set.
+        Score = timestamp (Sorts automatically by time).
+        """
+        data_str = json.dumps(hit.to_dict())
+        # ZADD adds to Sorted Set. duplicate data is handled automatically.
+        await self.redis.zadd(self.KEY_HITS, {data_str: hit.hit_timestamp})
+        # Keep the hits list alive for 25 hours (rolling window)
+        await self.redis.expire(self.KEY_HITS, 90000)
+
+    async def get_daily_hits(self) -> List[dict]:
+        """
+        Retrieves all hits sorted by newest first.
+        """
+        # ZREVRANGE key 0 -1 -> Returns all elements, High Score (Newest) to Low Score
+        raw_hits = await self.redis.zrevrange(self.KEY_HITS, 0, -1)
+        return [json.loads(h) for h in raw_hits]
+
+    # --- 3. TELEGRAM MESSAGE IDs (String) ---
+    async def clear_message_ids(self):
+        await self.redis.delete(self.KEY_MSGS)
+
+    async def save_message_ids(self, ids: List[int]):
+        await self.redis.set(self.KEY_MSGS, json.dumps(ids), ex=90000)
+
+    async def get_message_ids(self) -> List[int]:
+        data = await self.redis.get(self.KEY_MSGS)
+        return json.loads(data) if data else []
         
 def normalize_symbol(symbol: str) -> str:
     s = symbol.upper().split(':')[0]
     if '/' in s: return s
     return f"{s[:-4]}/{s[-4:]}" if s.endswith("USDT") else s
-
-def save_message_ids(ids: List[int]):
-    with open(CONFIG.MSG_FILE, "w") as f:
-        json.dump({"message_ids": ids, "timestamp": datetime.now(timezone.utc).isoformat()}, f)
-
-def load_message_ids() -> List[int]:
-    if not os.path.exists(CONFIG.MSG_FILE): return []
-    try:
-        with open(CONFIG.MSG_FILE) as f: return json.load(f).get("message_ids", [])
-    except: return []
-
-def clear_message_ids():
-    if os.path.exists(CONFIG.MSG_FILE): os.remove(CONFIG.MSG_FILE)
 
 # ==========================================
 # MAIN BOT CLASS
@@ -389,6 +461,7 @@ class MarketScanBot:
     def __init__(self):
         self.utc_now = datetime.now(timezone.utc)
         self.tg_bot = Bot(token=CONFIG.TELEGRAM_TOKEN) if CONFIG.TELEGRAM_TOKEN else None
+        self.db = RedisManager(CONFIG.REDIS_URL)
 
     async def run(self):
         logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
@@ -397,21 +470,29 @@ class MarketScanBot:
             logging.error("❌ Missing Telegram Env Vars")
             return
 
-        connector = aiohttp.TCPConnector(limit=100, ttl_dns_cache=300)
-        async with aiohttp.ClientSession(connector=connector) as session:
-            # 1. Setup Proxy (Critical Fix)
-            proxies = AsyncProxyPool()
-            if CONFIG.PROXY_URL:
-                await proxies.populate(CONFIG.PROXY_URL, session)
-            
-            # 2. Clients
-            binance = BinanceClient(session, proxies)
-            bybit = BybitClient(session, proxies)
+        # Initialize Redis Manager
+        self.db = RedisManager(CONFIG.REDIS_URL)
 
-            if CONFIG.RUN_MODE == "price_check":
-                await self.run_price_check(binance, bybit)
-            else:
-                await self.run_full_scan(binance, bybit)
+        try:
+            # Optimized Connector
+            connector = aiohttp.TCPConnector(limit=100, ttl_dns_cache=300)
+            async with aiohttp.ClientSession(connector=connector) as session:
+                # 1. Setup Proxy
+                proxies = AsyncProxyPool()
+                if CONFIG.PROXY_URL:
+                    await proxies.populate(CONFIG.PROXY_URL, session)
+                
+                # 2. Clients
+                binance = BinanceClient(session, proxies)
+                bybit = BybitClient(session, proxies)
+
+                if CONFIG.RUN_MODE == "price_check":
+                    await self.run_price_check(binance, bybit)
+                else:
+                    await self.run_full_scan(binance, bybit)
+        finally:
+            # Ensure Redis connection is closed cleanly
+            await self.db.close()
 
     # ==========================================
     # PRICE CHECK MODE
@@ -419,71 +500,54 @@ class MarketScanBot:
     
     async def run_price_check(self, binance: BinanceClient, bybit: BybitClient):
         logging.info("🚀 Starting Price Check...")
+
+        # 1. Get All Active Levels from Redis
+        # (This performs the SCAN + MGET batching under the hood)
+        levels_dicts = await self.db.get_all_levels()
         
-        # 1. Load Levels (Targets)
-        levels_data = load_levels()
-        if not levels_data:
-            logging.info("⚠️ No levels found.")
-            return # Or clear report
-    
-        # 2. Check for NEW hits
+        if not levels_dicts:
+            logging.info("⚠️ No active levels found in Redis.")
+            # Optional: Clear the pinned message if there's nothing to watch
+            await self.send_or_update_alert_report([]) 
+            return
+
+        logging.info(f"🔍 Checking {len(levels_dicts)} active levels...")
+
+        # 2. Create Check Tasks
         tasks = []
-        for key, data in levels_data.items():
+        for data in levels_dicts:
             client = binance if data['exchange'] == 'Binance' else bybit
             tasks.append(self.check_single_level(client, data))
+
+        # 3. Process Results
+        new_hits_count = 0
         
-        new_hits = []
-        for f in tqdm(asyncio.as_completed(tasks), total=len(tasks), desc="Checking Levels"):
-            res = await f
-            if res: 
-                new_hits.append(res)
-    
-        # 3. Load EXISTING hits from file
-        existing_hits_dicts = load_daily_hits()
-        
-        # Convert existing dicts back to LevelHit objects (if needed) or keep as dicts
-        # To keep it simple, let's work with DICTS for the report function
-        
-        # 4. Merge Logic (Avoid Duplicates)
-        # We use a unique key to identify a hit: Symbol + Interval + Price
-        seen_keys = set()
-        combined_hits = []
-        
-        # Helper to generate key
-        def get_hit_key(h):
-            # h can be dict or LevelHit object
-            if isinstance(h, dict):
-                return f"{h['exchange']}_{h['symbol']}_{h['interval']}_{h['price']}"
-            else:
-                return f"{h.exchange}_{h.symbol}_{h.interval}_{h.level_price}"
-    
-        # Add NEW hits first (they are fresh)
-        for h in new_hits:
-            k = get_hit_key(h)
-            if k not in seen_keys:
-                # Add timestamp if missing
-                if h.hit_timestamp == 0: 
-                    # If using NamedTuple, you might need to recreate it or handle this in check_single_level
-                    pass 
-                combined_hits.append(h.to_dict())
-                seen_keys.add(k)
+        # Process tasks as they complete
+        for f in tqdm(asyncio.as_completed(tasks), total=len(tasks), desc="Checking"):
+            hit = await f
+            if hit:
+                # A. Add to Confirmed Hits (Redis Sorted Set)
+                await self.db.add_hit(hit)
                 
-        # Add OLD hits (only if not re-triggered nicely or already there)
-        for h_dict in existing_hits_dicts:
-            k = get_hit_key(h_dict)
-            if k not in seen_keys:
-                combined_hits.append(h_dict)
-                seen_keys.add(k)
-    
-        # 5. Save & Report
-        if combined_hits:
-            save_daily_hits(combined_hits)
-            
-            # Convert dicts back to LevelHit objects for your report function
-            # (Or update report function to accept dicts)
-            final_objects = []
-            for d in combined_hits:
-                final_objects.append(LevelHit(
+                # B. Remove the Level from Active Monitoring
+                # Since it was hit, we delete it so it doesn't alert again.
+                await self.db.remove_level(hit.exchange, hit.symbol, hit.interval)
+                
+                new_hits_count += 1
+
+        if new_hits_count > 0:
+            logging.info(f"⚡ Found {new_hits_count} new hits!")
+        else:
+            logging.info("✅ No new hits detected.")
+        
+        # 4. Fetch ALL Confirmed Hits for Today (Old + New)
+        # Redis ZREVRANGE returns them sorted by time (Newest First)
+        all_hits_dicts = await self.db.get_daily_hits()
+        
+        if all_hits_dicts:
+            # Convert dicts back to LevelHit objects for the reporting function
+            final_objects = [
+                LevelHit(
                     exchange=d['exchange'],
                     symbol=d['symbol'],
                     market=d['market'],
@@ -492,12 +556,14 @@ class MarketScanBot:
                     level_price=d['price'],
                     timestamp=d.get('timestamp', ''),
                     hit_timestamp=d.get('hit_timestamp', 0)
-                ))
-                
-            # Send the report with ALL hits (Sorted inside report function)
+                ) for d in all_hits_dicts
+            ]
+            
+            # Update the Telegram Message
             await self.send_or_update_alert_report(final_objects)
         else:
-            logging.info("✅ No hits (new or old).")
+            # If we had hits before but they expired (rare), or just empty state
+            await self.send_or_update_alert_report([])
 
     async def check_single_level(self, client: ExchangeClient, data: dict) -> Optional[LevelHit]:
         candles = await client.fetch_ohlcv(data['symbol'], data['interval'], data['market'], limit=2)
@@ -515,20 +581,17 @@ class MarketScanBot:
         return None
 
     # ==========================================
-    # FULL SCAN MODE (Fixed Deduplication)
+    # FULL SCAN MODE
     # ==========================================
     async def run_full_scan(self, binance: BinanceClient, bybit: BybitClient):
         logging.info("🌍 Starting FULL Market Scan...")
         
-        clear_message_ids()
-        if os.path.exists(CONFIG.DAILY_HITS_FILE):
-            os.remove(CONFIG.DAILY_HITS_FILE) # <--- Start fresh every day
+        # 1. Reset Daily State in Redis
+        await self.db.clear_message_ids()
+        await self.db.clear_daily_hits()
         
-        # ==========================================
-        # 1. RELIABLE SYMBOL FETCHING (with Retries)
-        # ==========================================
+        # 2. RELIABLE SYMBOL FETCHING (with Retries)
         async def fetch_symbols_with_retry(fetch_func, name, max_attempts=5):
-            """Retries fetching symbols until successful or max attempts reached."""
             for attempt in range(max_attempts):
                 try:
                     symbols = await fetch_func()
@@ -538,14 +601,13 @@ class MarketScanBot:
                 except Exception as e:
                     logging.warning(f"⚠️ {name} fetch error: {e}")
                 
-                wait_time = 1 * (attempt + 1)
+                wait_time = 2 * (attempt + 1)
                 logging.warning(f"⚠️ {name} returned empty/failed. Retrying in {wait_time}s... (Attempt {attempt+1}/{max_attempts})")
                 await asyncio.sleep(wait_time)
             
             logging.error(f"❌ {name} FAILED after {max_attempts} attempts.")
             return []
     
-        # Create tasks for each exchange/market
         tasks = [
             fetch_symbols_with_retry(binance.get_perp_symbols, "Binance Perp"),
             fetch_symbols_with_retry(binance.get_spot_symbols, "Binance Spot"),
@@ -553,40 +615,27 @@ class MarketScanBot:
             fetch_symbols_with_retry(bybit.get_spot_symbols, "Bybit Spot"),
         ]
     
-        # Wait for all to complete (concurrently)
         bp, bs, yp, ys = await asyncio.gather(*tasks)
     
-        # Check if we have absolutely nothing
         if not (bp or bs or yp or ys):
-            logging.error("❌ CRITICAL: Failed to fetch ANY symbols from ANY exchange. Check network/proxies.")
+            logging.error("❌ CRITICAL: Failed to fetch ANY symbols. Check network/proxies.")
             return
 
-        # 2. Deduplication & Filtering Logic
-        # Priority: Binance Perp > Binance Spot > Bybit Perp > Bybit Spot
-        
+        # 3. Deduplication & Filtering Logic
         seen_normalized = set()
         
         def filter_unique(symbols: List[str]) -> List[str]:
             unique_list = []
             for s in symbols:
-                # A. Global Ignore List
-                if s in CONFIG.IGNORED_SYMBOLS: 
-                    continue
-                
-                # B. PATTERN FILTER: Strict "Must end with USDT" check.
-                # This instantly kills symbols like "BTCUSDT-27MAR26" or "ETHUSDT-26DEC25"
-                # because they end with numbers, not "USDT".
-                if not s.endswith("USDT"):
-                    continue
+                if s in CONFIG.IGNORED_SYMBOLS: continue
+                if not s.endswith("USDT"): continue
 
-                # C. Normalize & Deduplicate
                 norm = normalize_symbol(s)
                 if norm not in seen_normalized:
                     unique_list.append(s)
                     seen_normalized.add(norm)
             return unique_list
 
-        # Apply filter sequentially to respect priority
         final_bp = filter_unique(bp)
         final_bs = filter_unique(bs)
         final_yp = filter_unique(yp)
@@ -594,7 +643,7 @@ class MarketScanBot:
 
         logging.info(f"Scanning: B-Perp:{len(final_bp)} B-Spot:{len(final_bs)} Y-Perp:{len(final_yp)} Y-Spot:{len(final_ys)}")
 
-        # 3. Build Scan Tasks
+        # 4. Build Scan Tasks
         scan_tasks = []
         def add_tasks(client, syms, mkt, ex_name):
             for s in syms:
@@ -605,7 +654,7 @@ class MarketScanBot:
         add_tasks(bybit, final_yp, 'perp', 'Bybit')
         add_tasks(bybit, final_ys, 'spot', 'Bybit')
 
-        # 4. Execute Scan
+        # 5. Execute Scan
         results: List[LevelHit] = []
         low_movements: List[LowMovementHit] = []
         
@@ -614,10 +663,11 @@ class MarketScanBot:
             results.extend(revs)
             if low: low_movements.append(low)
 
-        # 5. Report
-        save_levels(results, self.utc_now.isoformat())
+        # 6. Save & Report (Using Redis)
+        await self.db.save_levels(results)  # <--- Redis Save
+        
         await self.send_full_report(results, low_movements)
-        await self.send_or_update_alert_report([]) 
+        await self.send_or_update_alert_report([]) # Reset the pinned alert
 
     async def scan_symbol_all_tfs(self, client: ExchangeClient, symbol: str, market: str, exchange: str):
         reversals = []
@@ -693,7 +743,6 @@ class MarketScanBot:
             return s.replace("USDT", "")
         
         def _fmt_price(p: float) -> str:
-            # Formats price cleanly: 0.0045 or 65000 (no trailing zeros)
             return f"${p:g}"
 
         if not hits:
@@ -712,11 +761,10 @@ class MarketScanBot:
                 ""
             ]
             
-            grouped = {} 
+            grouped = {}
             for h in hits:
                 grouped.setdefault(h.interval, {}).setdefault(h.exchange, {}).setdefault(h.signal_type, []).append(h)
             
-            # Map internal keys to nice display labels
             tf_labels = {"1M": "MONTHLY (1M)", "1w": "WEEKLY (1w)", "1d": "DAILY (1d)"}
 
             for interval in ["1M", "1w", "1d"]:
@@ -736,7 +784,6 @@ class MarketScanBot:
 
                     lines.append(f"┌ {ex_icon} *{ex_name.upper()}*")
                     
-                    # Helper to create the string list: "BTC ($95000), SOL ($140)"
                     def fmt_list(items):
                         return ", ".join([f"{_clean_sym(x.symbol)} ({_fmt_price(x.level_price)})" for x in items])
 
@@ -748,16 +795,16 @@ class MarketScanBot:
                     elif bear:
                         lines.append(f"└ 🔻 *Bear*: {fmt_list(bear)}")
                     
-                    lines.append("") # Spacer
+                    lines.append("") 
                 
             lines.append("═════════════════════")
             lines.append(f"🕒 {timestamp}")
             text = "\n".join(lines)
 
         # ---------------------------------------------------------
-        # Message ID Management (Pinned/Updated Message Logic)
+        # Message ID Management (Using Redis)
         # ---------------------------------------------------------
-        prev_ids = load_message_ids()
+        prev_ids = await self.db.get_message_ids()  # <--- Redis Load
         new_ids = []
         
         chunks = []
@@ -770,14 +817,14 @@ class MarketScanBot:
         if temp_chunk.strip(): chunks.append(temp_chunk)
         
         for idx, chunk in enumerate(chunks):
-            # Try to edit existing message to reduce spam
+            # Try to edit existing message
             if idx < len(prev_ids):
                 try:
                     await self.tg_bot.edit_message_text(chat_id=CONFIG.CHAT_ID, message_id=prev_ids[idx], text=chunk, parse_mode='Markdown')
                     new_ids.append(prev_ids[idx])
                     continue
                 except Exception:
-                    pass # If edit fails (e.g. message deleted), fall through to send new
+                    pass 
             
             # Send new message if needed
             try:
@@ -786,7 +833,7 @@ class MarketScanBot:
             except Exception as e:
                 logging.error(f"TG Send Error: {e}")
 
-        save_message_ids(new_ids)
+        await self.db.save_message_ids(new_ids) # <--- Redis Save
 
     async def send_full_report(self, results: List[LevelHit], low_movements: List[LowMovementHit]):
         timestamp = self.utc_now.astimezone(timezone(timedelta(hours=3))).strftime("%d %b %H:%M UTC+3")
