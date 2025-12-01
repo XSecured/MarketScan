@@ -325,10 +325,6 @@ def check_low_movement(candles: List[Candle], threshold_percent: float = 1.0) ->
 # STATE & UTILS
 # ==========================================
 
-import json
-from redis.asyncio import Redis
-from typing import List
-
 class RedisManager:
     def __init__(self, redis_url: str, bot_prefix: str = "reversal_bot"):
         """
@@ -351,7 +347,7 @@ class RedisManager:
 
     async def close(self):
         """Closes the Redis connection."""
-        await self.redis.close()
+        await self.redis.aclose()
 
     # --- 1. INDIVIDUAL LEVELS (String Keys with TTL) ---
     async def save_levels(self, results: List[LevelHit]):
