@@ -658,10 +658,19 @@ class MarketScanBot:
         results: List[LevelHit] = []
         low_movements: List[LowMovementHit] = []
         
+        total_fetches_attempted = len(scan_tasks) * 3 # 3 TFs per symbol
+        total_fetches_success = 0
+        
         for f in tqdm(asyncio.as_completed(scan_tasks), total=len(scan_tasks), desc="Scanning"):
-            revs, low = await f
+            revs, low, success_cnt = await f  # <--- Unpack 3 values
+            
             results.extend(revs)
             if low: low_movements.append(low)
+            total_fetches_success += success_cnt
+
+        # Log the stats
+        success_rate = (total_fetches_success / total_fetches_attempted) * 100 if total_fetches_attempted > 0 else 0
+        logging.info(f"📊 Scan Complete. Data Fetch Success Rate: {total_fetches_success}/{total_fetches_attempted} ({success_rate:.1f}%)")
 
         # 6. Save & Report (Using Redis)
         await self.db.save_levels(results)  # <--- Redis Save
@@ -672,11 +681,10 @@ class MarketScanBot:
     async def scan_symbol_all_tfs(self, client: ExchangeClient, symbol: str, market: str, exchange: str):
         reversals = []
         low_move = None
+        success_count = 0 # How many TFs loaded successfully?
         
-        # Define the intervals we need to fetch
         intervals = ["1M", "1w", "1d"]
         
-        # Create a list of tasks to fetch all timeframes simultaneously
         tasks = [
             client.fetch_ohlcv(symbol, interval, market, limit=3) 
             for interval in intervals
@@ -687,13 +695,17 @@ class MarketScanBot:
         for i, candles in enumerate(results_list):
             interval = intervals[i]
 
+            # Check for failure
             if isinstance(candles, Exception) or not candles:
+                # Logic: If it's empty or an error, it failed.
                 continue
+            
+            # If we are here, we have valid data!
+            success_count += 1
 
             # Logic 1: Reversal
             price, sig = check_reversal(candles)
             if price and sig:
-                # Only add if the current candle hasn't already invalidated/touched the price
                 if not current_candle_touched_price(candles, price):
                     reversals.append(LevelHit(exchange, symbol, market, interval, sig, price))
             
@@ -703,7 +715,7 @@ class MarketScanBot:
                 if lm is not None:
                     low_move = LowMovementHit(exchange, symbol, market, interval, lm)
                     
-        return reversals, low_move
+        return reversals, low_move, success_count
 
     # ==========================================
     # TELEGRAM LOGIC
