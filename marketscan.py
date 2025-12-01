@@ -25,6 +25,7 @@ class Config:
     MAX_RETRIES: int = 3
     MAX_TG_CHARS: int = 4000
     MAX_CONCURRENCY: int = 50
+    DAILY_HITS_FILE: str = "daily_hits.json"
     
     # Files
     LEVELS_FILE: str = "detected_levels.json"
@@ -66,6 +67,7 @@ class LevelHit:
     level_price: float
     current_price: float = 0.0
     timestamp: str = ""
+    hit_timestamp: float = 0.0
     
     def to_dict(self):
         return {
@@ -76,6 +78,7 @@ class LevelHit:
             "price": self.level_price,
             "signal_type": self.signal_type,
             "timestamp": self.timestamp
+            "hit_timestamp": self.hit_timestamp
         }
 
 @dataclass
@@ -341,6 +344,25 @@ def save_levels(results: List[LevelHit], utc_now_str: str):
     with open(CONFIG.LEVELS_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
+def load_daily_hits() -> List[dict]:
+    if not os.path.exists(CONFIG.DAILY_HITS_FILE):
+        return []
+    try:
+        with open(CONFIG.DAILY_HITS_FILE, "r") as f:
+            data = json.load(f)
+            # Optional: clear hits if they are from a previous day?
+            # For now, let's just load them.
+            return data.get("hits", [])
+    except:
+        return []
+
+def save_daily_hits(hits_data: List[dict]):
+    # Sort by hit_timestamp descending (Newest first) before saving
+    hits_data.sort(key=lambda x: x.get("hit_timestamp", 0), reverse=True)
+    
+    with open(CONFIG.DAILY_HITS_FILE, "w") as f:
+        json.dump({"last_updated": datetime.now(timezone.utc).isoformat(), "hits": hits_data}, f, indent=2)
+        
 def normalize_symbol(symbol: str) -> str:
     s = symbol.upper().split(':')[0]
     if '/' in s: return s
@@ -394,26 +416,88 @@ class MarketScanBot:
     # ==========================================
     # PRICE CHECK MODE
     # ==========================================
+    
     async def run_price_check(self, binance: BinanceClient, bybit: BybitClient):
         logging.info("🚀 Starting Price Check...")
-        levels_data = load_levels()
         
+        # 1. Load Levels (Targets)
+        levels_data = load_levels()
         if not levels_data:
-            logging.info("⚠️ No levels found in file.")
-            await self.send_or_update_alert_report([])
-            return
-
+            logging.info("⚠️ No levels found.")
+            return # Or clear report
+    
+        # 2. Check for NEW hits
         tasks = []
         for key, data in levels_data.items():
             client = binance if data['exchange'] == 'Binance' else bybit
             tasks.append(self.check_single_level(client, data))
-
-        hits = []
+        
+        new_hits = []
         for f in tqdm(asyncio.as_completed(tasks), total=len(tasks), desc="Checking Levels"):
             res = await f
-            if res: hits.append(res)
-
-        await self.send_or_update_alert_report(hits)
+            if res: 
+                new_hits.append(res)
+    
+        # 3. Load EXISTING hits from file
+        existing_hits_dicts = load_daily_hits()
+        
+        # Convert existing dicts back to LevelHit objects (if needed) or keep as dicts
+        # To keep it simple, let's work with DICTS for the report function
+        
+        # 4. Merge Logic (Avoid Duplicates)
+        # We use a unique key to identify a hit: Symbol + Interval + Price
+        seen_keys = set()
+        combined_hits = []
+        
+        # Helper to generate key
+        def get_hit_key(h):
+            # h can be dict or LevelHit object
+            if isinstance(h, dict):
+                return f"{h['exchange']}_{h['symbol']}_{h['interval']}_{h['price']}"
+            else:
+                return f"{h.exchange}_{h.symbol}_{h.interval}_{h.level_price}"
+    
+        # Add NEW hits first (they are fresh)
+        for h in new_hits:
+            k = get_hit_key(h)
+            if k not in seen_keys:
+                # Add timestamp if missing
+                if h.hit_timestamp == 0: 
+                    # If using NamedTuple, you might need to recreate it or handle this in check_single_level
+                    pass 
+                combined_hits.append(h.to_dict())
+                seen_keys.add(k)
+                
+        # Add OLD hits (only if not re-triggered nicely or already there)
+        for h_dict in existing_hits_dicts:
+            k = get_hit_key(h_dict)
+            if k not in seen_keys:
+                combined_hits.append(h_dict)
+                seen_keys.add(k)
+    
+        # 5. Save & Report
+        if combined_hits:
+            save_daily_hits(combined_hits)
+            
+            # Convert dicts back to LevelHit objects for your report function
+            # (Or update report function to accept dicts)
+            final_objects = []
+            for d in combined_hits:
+                final_objects.append(LevelHit(
+                    exchange=d['exchange'],
+                    symbol=d['symbol'],
+                    market=d['market'],
+                    interval=d['interval'],
+                    signal_type=d['signal_type'],
+                    level_price=d['price'],
+                    timestamp=d.get('timestamp', ''),
+                    hit_timestamp=d.get('hit_timestamp', 0)
+                ))
+                
+            # Send the report with ALL hits (Sorted inside report function)
+            await self.send_or_update_alert_report(final_objects)
+        else:
+            logging.info("✅ No hits (new or old).")
 
     async def check_single_level(self, client: ExchangeClient, data: dict) -> Optional[LevelHit]:
         candles = await client.fetch_ohlcv(data['symbol'], data['interval'], data['market'], limit=2)
@@ -435,7 +519,10 @@ class MarketScanBot:
     # ==========================================
     async def run_full_scan(self, binance: BinanceClient, bybit: BybitClient):
         logging.info("🌍 Starting FULL Market Scan...")
+        
         clear_message_ids()
+        if os.path.exists(CONFIG.DAILY_HITS_FILE):
+            os.remove(CONFIG.DAILY_HITS_FILE) # <--- Start fresh every day
         
         # ==========================================
         # 1. RELIABLE SYMBOL FETCHING (with Retries)
