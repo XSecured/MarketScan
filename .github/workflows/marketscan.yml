@@ -47,19 +47,21 @@ jobs:
         PROXY_LIST_URL: ${{ secrets.PROXY_LIST_URL }}
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        REDIS_URL: ${{ secrets.REDIS_URL }}
+        BOT_NAME: "reversal_bot"        
         RUN_MODE: ${{ steps.run_type.outputs.mode }}
       run: |
         python marketscan.py
 
-    - name: Commit Level & Alert-ID Updates          # <- renamed for clarity
-      if: always()
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name  "Market Scanner Bot"
+    #- name: Commit Level & Alert-ID Updates          # <- renamed for clarity
+      #if: always()
+      #run: |
+        #git config --local user.email "action@github.com"
+        #git config --local user.name  "Market Scanner Bot"
 
         # stage only the files we care about
-        git add detected_levels.json level_alert_message.json
+        #git add detected_levels.json level_alert_message.json
 
         # commit if there is anything new or deleted
-        git diff --cached --quiet || git commit -m "auto: update level files $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-        git push
+        #git diff --cached --quiet || git commit -m "auto: update level files $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+        #git push
