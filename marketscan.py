@@ -504,13 +504,27 @@ class MarketScanBot:
         reversals = []
         low_move = None
         
-        for interval in ["1M", "1w", "1d"]:
-            candles = await client.fetch_ohlcv(symbol, interval, market, limit=3)
-            if not candles: continue
+        # Define the intervals we need to fetch
+        intervals = ["1M", "1w", "1d"]
+        
+        # Create a list of tasks to fetch all timeframes simultaneously
+        tasks = [
+            client.fetch_ohlcv(symbol, interval, market, limit=3) 
+            for interval in intervals
+        ]
+        
+        results_list = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        for i, candles in enumerate(results_list):
+            interval = intervals[i]
+
+            if isinstance(candles, Exception) or not candles:
+                continue
 
             # Logic 1: Reversal
             price, sig = check_reversal(candles)
             if price and sig:
+                # Only add if the current candle hasn't already invalidated/touched the price
                 if not current_candle_touched_price(candles, price):
                     reversals.append(LevelHit(exchange, symbol, market, interval, sig, price))
             
