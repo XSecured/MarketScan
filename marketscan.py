@@ -92,10 +92,8 @@ class LowMovementHit:
 
 class AsyncProxyPool:
     def __init__(self, max_pool_size=25):
-        self.proxies: List[str] = []
+        self.queue = asyncio.Queue()
         self.max_pool_size = max_pool_size
-        self.iterator = None
-        self._lock = asyncio.Lock()
 
     async def populate(self, url: str, session: aiohttp.ClientSession):
         """Fetches AND validates proxies with high-speed early exit."""
@@ -120,47 +118,48 @@ class AsyncProxyPool:
 
         logging.info(f"🔎 Validating {len(raw_proxies)} proxies (Target: {self.max_pool_size})...")
         
-        self.proxies = []
+        # Temporary list to hold valid proxies before filling queue
+        valid_proxies = []
+        
         # Shuffle to avoid getting stuck in a block of bad IPs from the same subnet
         random.shuffle(raw_proxies)
         
         # 2. Create Tasks with Semaphore (Throttling)
-        # This allows us to queue ALL proxies but only run 200 at a time.
         sem = asyncio.Semaphore(200)
 
         async def protected_test(p):
             async with sem:
                 return await self._test_proxy(p, session)
 
-        # Wrap in create_task to avoid "coroutine never awaited" warning
         tasks = [asyncio.create_task(protected_test(p)) for p in raw_proxies]
 
-        # 3. Process results AS SOON AS THEY FINISH (No waiting for batches)
+        # 3. Process results AS SOON AS THEY FINISH
         for future in asyncio.as_completed(tasks):
             try:
                 proxy, is_good = await future
                 if is_good:
-                    self.proxies.append(proxy)
+                    valid_proxies.append(proxy)
                     # EXIT IMMEDIATELY once we have enough
-                    if len(self.proxies) >= self.max_pool_size:
+                    if len(valid_proxies) >= self.max_pool_size:
                         break
             except:
                 pass
         
-        # 4. Cleanup: Cancel all remaining tasks
-        # This stops the background work instantly and frees resources
+        # 4. Cleanup: Cancel remaining tasks
         cancelled_count = 0
         for t in tasks:
             if not t.done():
                 t.cancel()
                 cancelled_count += 1
         
-        # Allow a tiny moment for cancellations to register
         await asyncio.sleep(0.1)
         
-        if self.proxies:
-            self.iterator = cycle(self.proxies)
-            logging.info(f"✅ Proxy Pool Ready: {len(self.proxies)} working proxies (Cancelled {cancelled_count} redundant checks).")
+        if valid_proxies:
+            # Populate the Queue with our valid proxies
+            for p in valid_proxies:
+                self.queue.put_nowait(p)
+                
+            logging.info(f"✅ Proxy Pool Ready: {self.queue.qsize()} working proxies (Cancelled {cancelled_count} redundant checks).")
         else:
             logging.error("❌ NO WORKING PROXIES FOUND! Calls will likely fail.")
 
@@ -174,11 +173,18 @@ class AsyncProxyPool:
             return proxy, False
 
     async def get_proxy(self) -> Optional[str]:
-        if not self.proxies:
+        """Returns a proxy from the queue and rotates it to the back."""
+        if self.queue.empty():
             return None
-        async with self._lock:
-            return next(self.iterator)
-
+        
+        # Get a proxy (No waiting for lock)
+        proxy = await self.queue.get()
+        
+        # Put it back immediately (Round Robin rotation)
+        self.queue.put_nowait(proxy)
+        
+        return proxy
+        
 # ==========================================
 # EXCHANGE CLIENTS
 # ==========================================
@@ -369,7 +375,8 @@ class MarketScanBot:
             logging.error("❌ Missing Telegram Env Vars")
             return
 
-        async with aiohttp.ClientSession() as session:
+        connector = aiohttp.TCPConnector(limit=100, ttl_dns_cache=300)
+        async with aiohttp.ClientSession(connector=connector) as session:
             # 1. Setup Proxy (Critical Fix)
             proxies = AsyncProxyPool()
             if CONFIG.PROXY_URL:
