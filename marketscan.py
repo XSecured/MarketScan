@@ -437,16 +437,41 @@ class MarketScanBot:
         logging.info("🌍 Starting FULL Market Scan...")
         clear_message_ids()
         
-        # 1. Fetch Symbols
-        b_perp_t = asyncio.create_task(binance.get_perp_symbols())
-        b_spot_t = asyncio.create_task(binance.get_spot_symbols())
-        y_perp_t = asyncio.create_task(bybit.get_perp_symbols())
-        y_spot_t = asyncio.create_task(bybit.get_spot_symbols())
-        
-        bp, bs, yp, ys = await asyncio.gather(b_perp_t, b_spot_t, y_perp_t, y_spot_t)
-        
+        # ==========================================
+        # 1. RELIABLE SYMBOL FETCHING (with Retries)
+        # ==========================================
+        async def fetch_symbols_with_retry(fetch_func, name, max_attempts=5):
+            """Retries fetching symbols until successful or max attempts reached."""
+            for attempt in range(max_attempts):
+                try:
+                    symbols = await fetch_func()
+                    if symbols and len(symbols) > 0:
+                        logging.info(f"✅ {name}: Found {len(symbols)} symbols.")
+                        return symbols
+                except Exception as e:
+                    logging.warning(f"⚠️ {name} fetch error: {e}")
+                
+                wait_time = 1 * (attempt + 1)
+                logging.warning(f"⚠️ {name} returned empty/failed. Retrying in {wait_time}s... (Attempt {attempt+1}/{max_attempts})")
+                await asyncio.sleep(wait_time)
+            
+            logging.error(f"❌ {name} FAILED after {max_attempts} attempts.")
+            return []
+    
+        # Create tasks for each exchange/market
+        tasks = [
+            fetch_symbols_with_retry(binance.get_perp_symbols, "Binance Perp"),
+            fetch_symbols_with_retry(binance.get_spot_symbols, "Binance Spot"),
+            fetch_symbols_with_retry(bybit.get_perp_symbols, "Bybit Perp"),
+            fetch_symbols_with_retry(bybit.get_spot_symbols, "Bybit Spot"),
+        ]
+    
+        # Wait for all to complete (concurrently)
+        bp, bs, yp, ys = await asyncio.gather(*tasks)
+    
+        # Check if we have absolutely nothing
         if not (bp or bs or yp or ys):
-            logging.error("❌ Failed to fetch symbols. Check proxies/connection!")
+            logging.error("❌ CRITICAL: Failed to fetch ANY symbols from ANY exchange. Check network/proxies.")
             return
 
         # 2. Deduplication & Filtering Logic
